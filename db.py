@@ -1,15 +1,28 @@
-"""Read-only SQLite access to the Hermes kanban database.
+"""Read-only SQLite access to the Hermes kanban database (multi-board aware).
 
 The live database is owned by the Hermes gateway. Every connection here is
 opened in read-only mode with a busy_timeout so we never block the writer or
 risk corrupting its data. All writes go through kanban_cli.py.
+
+Boards: the active board is decided by `hermes kanban boards show` output.
+The default board lives at /root/.hermes/kanban.db (back-compat); every other
+board lives at /root/.hermes/kanban/boards/<slug>/kanban.db. The active board
+slug is cached for 30s and refreshed on POST /api/boards/{slug}/switch.
 """
 import json
 import os
 import sqlite3
 import time
 
-DB_PATH = os.environ.get("KANBAN_DB", "/root/.hermes/kanban.db")
+import kanban_cli
+
+DEFAULT_DB_PATH = os.environ.get("KANBAN_DB", "/root/.hermes/kanban.db")
+BOARDS_ROOT = os.environ.get("KANBAN_BOARDS_ROOT", "/root/.hermes/kanban/boards")
+DEFAULT_BOARD_SLUG = "default"
+BOARD_CACHE_TTL = 30.0
+
+_current_board = None
+_current_board_ts = 0.0
 
 STATUS_LABELS = {
     "todo": "待办",
@@ -33,8 +46,64 @@ TASK_COLS = (
 )
 
 
-def connect():
-    conn = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True, timeout=10)
+# --- board resolution -------------------------------------------------------
+
+def _parse_show_slug(stdout):
+    """Extract the active board slug from `hermes kanban boards show`."""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.lower().startswith("current board"):
+            return line.split(":", 1)[-1].strip() or None
+    return None
+
+
+def current_board_slug(force=False):
+    """Active board slug, cached for BOARD_CACHE_TTL seconds."""
+    global _current_board, _current_board_ts
+    now = time.time()
+    if not force and _current_board is not None and (now - _current_board_ts) < BOARD_CACHE_TTL:
+        return _current_board
+    slug = None
+    try:
+        proc = kanban_cli.run_cli(["boards", "show"])
+        slug = _parse_show_slug(proc.stdout)
+    except Exception:
+        slug = None
+    if not slug:
+        slug = DEFAULT_BOARD_SLUG
+    _current_board = slug
+    _current_board_ts = now
+    return slug
+
+
+def refresh_current_board():
+    """Force-re-read the active board (call after a successful switch)."""
+    return current_board_slug(force=True)
+
+
+def current_db_path():
+    """Path of the SQLite DB for the active board."""
+    slug = current_board_slug()
+    if slug == DEFAULT_BOARD_SLUG:
+        return DEFAULT_DB_PATH
+    return os.path.join(BOARDS_ROOT, slug, "kanban.db")
+
+
+def board_db_path(slug):
+    """Path of the SQLite DB for a specific board slug."""
+    if slug == DEFAULT_BOARD_SLUG:
+        return DEFAULT_DB_PATH
+    return os.path.join(BOARDS_ROOT, slug, "kanban.db")
+
+
+# --- connection -------------------------------------------------------------
+
+def connect(db_path=None):
+    conn = sqlite3.connect(
+        "file:%s?mode=ro" % (db_path or current_db_path()), uri=True, timeout=10
+    )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
@@ -66,7 +135,9 @@ def _parse_payload(value):
     return value
 
 
-def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None):
+# --- queries ----------------------------------------------------------------
+
+def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None, db_path=None):
     """List tasks with optional filters. Mirrors the CLI `list` view."""
     sql = "SELECT %s FROM tasks WHERE 1=1" % TASK_COLS
     params = []
@@ -85,13 +156,13 @@ def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limi
     if limit:
         sql += " LIMIT ?"
         params.append(limit)
-    with connect() as conn:
+    with connect(db_path) as conn:
         rows = conn.execute(sql, params).fetchall()
     return [_row_to_task(r) for r in rows]
 
 
-def get_assignees():
-    with connect() as conn:
+def get_assignees(db_path=None):
+    with connect(db_path) as conn:
         rows = conn.execute(
             "SELECT assignee AS name, COUNT(*) AS count FROM tasks "
             "WHERE assignee IS NOT NULL AND assignee != '' "
@@ -100,9 +171,9 @@ def get_assignees():
     return [dict(r) for r in rows]
 
 
-def get_board():
+def get_board(db_path=None):
     """Group tasks by status for the kanban board."""
-    tasks = fetch_tasks(include_archived=True)
+    tasks = fetch_tasks(include_archived=True, db_path=db_path)
     statuses = []
     for status, label in STATUS_LABELS.items():
         col_tasks = [t for t in tasks if t["status"] == status]
@@ -115,9 +186,9 @@ def get_board():
     return statuses
 
 
-def get_task(task_id):
+def get_task(task_id, db_path=None):
     """Task detail: task + comments + links + runs + attachments + recent events."""
-    with connect() as conn:
+    with connect(db_path) as conn:
         row = conn.execute(
             "SELECT %s FROM tasks WHERE id = ?" % TASK_COLS, (task_id,)
         ).fetchone()
@@ -175,13 +246,37 @@ def get_task(task_id):
     }
 
 
-def stats_fallback():
+def get_events(since=None, kinds=None, limit=100, db_path=None):
+    """Recent global task_events, ascending by created_at.
+
+    Optional filters: `since` (unix seconds, exclusive) and `kinds` (list of
+    event kind strings). Results are capped at `limit` rows.
+    """
+    sql = "SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE 1=1"
+    params = []
+    if since is not None:
+        sql += " AND created_at > ?"
+        params.append(int(since))
+    if kinds:
+        sql += " AND kind IN (%s)" % ",".join("?" * len(kinds))
+        params.extend(kinds)
+    sql += " ORDER BY created_at ASC LIMIT ?"
+    params.append(limit)
+    with connect(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    out = [dict(r) for r in rows]
+    for e in out:
+        e["payload"] = _parse_payload(e.get("payload"))
+    return out
+
+
+def stats_fallback(db_path=None):
     """SQLite fallback for `hermes kanban stats --json`."""
     now = int(time.time())
     by_status = {}
     by_assignee = {}
     oldest_ready = None
-    with connect() as conn:
+    with connect(db_path) as conn:
         for status, n in conn.execute(
             "SELECT status, COUNT(*) FROM tasks GROUP BY status"
         ).fetchall():

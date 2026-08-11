@@ -8,13 +8,17 @@ CLI signature notes (verified with `hermes kanban <verb> --help`):
 - `assign` / `reassign` take the profile as a positional arg (not --assignee).
 - `block`, `schedule`, `promote`, `request-changes` require a reason positional.
 - `attach-rm` takes a global attachment id, not a per-task flag.
-- Commands with `--json` support: list, show, create, stats, promote.
+- Commands with `--json` support: list, show, create, stats, promote, boards,
+  notify-list, diagnostics, assignees, repair, specify, decompose.
+- AI-powered verbs (specify / decompose / swarm) can take minutes — they use
+  LONG_TIMEOUT (default 300s).
 """
 import os
 import subprocess
 
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 TIMEOUT = int(os.environ.get("KANBAN_CLI_TIMEOUT", "60"))
+LONG_TIMEOUT = int(os.environ.get("KANBAN_CLI_LONG_TIMEOUT", "300"))
 
 
 class CLIError(Exception):
@@ -43,6 +47,54 @@ def run_checked(args, timeout=TIMEOUT):
 
 def summary(proc):
     return (proc.stdout or "").strip() or (proc.stderr or "").strip() or "ok"
+
+
+# --- boards -----------------------------------------------------------------
+
+def boards_list(include_archived=False):
+    args = ["boards", "list", "--json"]
+    if include_archived:
+        args.append("--all")
+    return run_checked(args)
+
+
+def boards_show():
+    return run_checked(["boards", "show"])
+
+
+def boards_create(slug, name=None, description=None, icon=None, color=None):
+    args = ["boards", "create", slug]
+    if name:
+        args += ["--name", name]
+    if description:
+        args += ["--description", description]
+    if icon:
+        args += ["--icon", icon]
+    if color:
+        args += ["--color", color]
+    return run_checked(args)
+
+
+def boards_switch(slug):
+    return run_checked(["boards", "switch", slug])
+
+
+def boards_rename(slug, name):
+    return run_checked(["boards", "rename", slug, name])
+
+
+def boards_set_workdir(slug, path=None):
+    args = ["boards", "set-default-workdir", slug]
+    if path:
+        args.append(path)
+    return run_checked(args)
+
+
+def boards_rm(slug, delete=False):
+    args = ["boards", "rm", slug]
+    if delete:
+        args.append("--delete")
+    return run_checked(args)
 
 
 # --- task lifecycle ---------------------------------------------------------
@@ -155,3 +207,115 @@ def attach(task_id, path):
 
 def attach_rm(attachment_id):
     return run_checked(["attach-rm", str(attachment_id)])
+
+
+# --- task extended (v2) -----------------------------------------------------
+
+def edit(task_id, result, summary=None, metadata=None):
+    args = ["edit", task_id, "--result", result]
+    if summary:
+        args += ["--summary", summary]
+    if metadata:
+        args += ["--metadata", metadata]
+    return run_checked(args)
+
+
+def specify(task_id):
+    return run_checked(["specify", task_id], timeout=LONG_TIMEOUT)
+
+
+def decompose(task_id):
+    return run_checked(["decompose", task_id], timeout=LONG_TIMEOUT)
+
+
+def claim(task_id, ttl=None):
+    args = ["claim", task_id]
+    if ttl is not None:
+        args += ["--ttl", str(ttl)]
+    return run_checked(args)
+
+
+def heartbeat(task_id, note=None):
+    args = ["heartbeat", task_id]
+    if note:
+        args += ["--note", note]
+    return run_checked(args)
+
+
+def context(task_id):
+    return run_checked(["context", task_id])
+
+
+def log(task_id, tail=None):
+    args = ["log", task_id]
+    if tail is not None:
+        args += ["--tail", str(tail)]
+    return run_checked(args)
+
+
+# --- notifications ----------------------------------------------------------
+
+def notify_list(task_id=None):
+    args = ["notify-list", "--json"]
+    if task_id:
+        args.append(task_id)
+    return run_checked(args)
+
+
+def notify_subscribe(task_id, platform, chat_id, chat_type=None, thread_id=None,
+                     user_id=None, notifier_profile=None):
+    args = ["notify-subscribe", task_id, "--platform", platform, "--chat-id", chat_id]
+    if chat_type:
+        args += ["--chat-type", chat_type]
+    if thread_id:
+        args += ["--thread-id", thread_id]
+    if user_id:
+        args += ["--user-id", user_id]
+    if notifier_profile:
+        args += ["--notifier-profile", notifier_profile]
+    return run_checked(args)
+
+
+def notify_unsubscribe(task_id, platform, chat_id, thread_id=None):
+    args = ["notify-unsubscribe", task_id, "--platform", platform, "--chat-id", chat_id]
+    if thread_id:
+        args += ["--thread-id", thread_id]
+    return run_checked(args)
+
+
+# --- swarm / global ---------------------------------------------------------
+
+def swarm(goal, workers, verifier, synthesizer, priority=None, created_by="web"):
+    args = ["swarm", goal, "--verifier", verifier, "--synthesizer", synthesizer,
+            "--created-by", created_by, "--json"]
+    for w in workers:
+        args += ["--worker", w]
+    if priority is not None:
+        args += ["--priority", str(priority)]
+    return run_checked(args, timeout=LONG_TIMEOUT)
+
+
+def diagnostics(severity=None, task=None):
+    args = ["diagnostics", "--json"]
+    if severity:
+        args += ["--severity", severity]
+    if task:
+        args += ["--task", task]
+    return run_checked(args)
+
+
+def gc(event_retention_days=None, log_retention_days=None):
+    args = ["gc"]
+    if event_retention_days is not None:
+        args += ["--event-retention-days", str(event_retention_days)]
+    if log_retention_days is not None:
+        args += ["--log-retention-days", str(log_retention_days)]
+    return run_checked(args)
+
+
+def repair():
+    return run_checked(["repair", "--json"])
+
+
+def assignees():
+    return run_checked(["assignees", "--json"])

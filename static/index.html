@@ -3,52 +3,114 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>Hermes Kanban</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2304060c'/%3E%3Crect x='1.5' y='1.5' width='29' height='29' rx='6' fill='none' stroke='%235ff0e0' stroke-width='2'/%3E%3Ctext x='16' y='22' font-size='15' text-anchor='middle' fill='%235ff0e0' font-family='monospace'%3E%26%2310296;%26%2310297;%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="hud">
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="scan-beam" aria-hidden="true"></div>
+
   <header id="topbar">
-    <div class="brand">⟨ Hermes Kanban ⟩</div>
+    <div class="brand">
+      <span class="brand-brackets">⟨</span><span class="brand-name">Hermes Kanban</span><span class="brand-brackets">⟩</span>
+      <span class="brand-sep">·</span>
+      <span id="board-name" class="brand-board">…</span>
+    </div>
+    <nav class="top-nav" id="top-nav" aria-label="主导航">
+      <button class="top-nav-btn active" data-nav="board">看板</button>
+      <button class="top-nav-btn" data-nav="list">列表</button>
+      <button class="top-nav-btn" data-nav="stats">统计</button>
+      <button class="top-nav-btn" data-nav="settings">设置</button>
+    </nav>
     <div class="controls">
-      <div class="seg" id="view-seg">
-        <button id="view-board" class="active" data-view="board">看板</button>
-        <button id="view-list" data-view="list">列表</button>
+      <div class="theme-wrap" id="theme-wrap">
+        <button id="theme-btn" class="icon-btn" title="切换主题" aria-label="切换主题">🎨</button>
+        <div id="theme-pop" class="theme-pop hidden"></div>
       </div>
-      <input id="search" type="search" placeholder="搜索任务…" autocomplete="off">
-      <button id="refresh" title="刷新" aria-label="刷新">⟳</button>
+      <input id="search" type="search" placeholder="搜索任务…" autocomplete="off" aria-label="搜索">
+      <button id="refresh" class="icon-btn" title="刷新" aria-label="刷新">⟳</button>
     </div>
   </header>
 
   <main id="main">
-    <section id="board-view" class="view" aria-label="看板">
+    <section id="board-view" class="view active" aria-label="看板">
       <div id="board" class="board"></div>
     </section>
-    <section id="list-view" class="view hidden" aria-label="列表">
-      <div class="list-filters">
-        <select id="list-status" aria-label="按状态筛选">
-          <option value="">全部状态</option>
-        </select>
-        <select id="list-assignee" aria-label="按指派筛选">
-          <option value="">全部指派</option>
-        </select>
+
+    <section id="list-view" class="view" aria-label="列表">
+      <div class="list-toolbar">
+        <div id="list-status-wrap" class="filter-wrap"></div>
+        <div id="list-assignee-wrap" class="filter-wrap"></div>
+        <div class="filter-wrap grow">
+          <input id="list-search" type="search" placeholder="搜索…" autocomplete="off" aria-label="列表搜索">
+        </div>
+        <button id="sort-btn" class="icon-btn" title="切换排序" aria-label="切换排序">↕</button>
+        <label class="check-label" id="archived-toggle">
+          <input type="checkbox" id="list-archived">
+          <span class="check-box"><svg viewBox="0 0 12 12"><path d="M2 6l3 3 5-6"/></svg></span>
+          <span>含归档</span>
+        </label>
       </div>
+      <div id="list-sort-note" class="list-sort-note"></div>
       <div id="list-tasks" class="list-tasks"></div>
+    </section>
+
+    <section id="stats-view" class="view" aria-label="统计">
+      <div class="stats-grid">
+        <div id="stats-status" class="panel"></div>
+        <div id="stats-assignee" class="panel"></div>
+        <div id="stats-ready" class="panel"></div>
+      </div>
+      <div id="stats-events" class="panel">
+        <div class="panel-head">
+          <h3>全局事件流</h3>
+          <span class="panel-note" id="events-note">5 秒增量</span>
+        </div>
+        <div id="events-list" class="events-list"></div>
+      </div>
+    </section>
+
+    <section id="settings-view" class="view" aria-label="设置">
+      <div class="panel">
+        <div class="panel-head"><h3>Board 管理</h3></div>
+        <div id="settings-board"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>通知订阅管理</h3></div>
+        <div id="settings-notify"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>维护</h3></div>
+        <div id="settings-maintain"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>关于</h3></div>
+        <div id="settings-about" class="about"></div>
+      </div>
     </section>
   </main>
 
+  <nav id="bottom-nav" aria-label="底部导航">
+    <button class="nav-btn active" data-nav="board"><span class="nav-ic">▦</span><span>看板</span></button>
+    <button class="nav-btn" data-nav="list"><span class="nav-ic">☰</span><span>列表</span></button>
+    <button class="nav-btn" data-nav="stats"><span class="nav-ic">▥</span><span>统计</span></button>
+    <button class="nav-btn" data-nav="settings"><span class="nav-ic">⚙</span><span>设置</span></button>
+  </nav>
+
   <button id="fab" title="新建任务" aria-label="新建任务">＋</button>
 
-  <div id="drawer" class="drawer hidden">
+  <div id="drawer" class="drawer hidden" aria-label="任务详情">
     <div id="drawer-content" class="drawer-inner"></div>
   </div>
 
-  <div id="modal" class="modal hidden">
+  <div id="modal" class="modal hidden" aria-label="弹窗">
     <div class="modal-scrim" data-close="modal"></div>
     <div id="modal-content" class="modal-box"></div>
   </div>
 
-  <div id="menu" class="menu hidden"></div>
+  <div id="menu" class="menu hidden" role="menu"></div>
   <div id="toast" class="toast hidden" role="status"></div>
 
   <script src="app.js"></script>

@@ -1,4 +1,4 @@
-"""Hermes Kanban Web — FastAPI backend.
+"""Hermes Kanban Web — FastAPI backend (v2, multi-board).
 
 Reads go straight to SQLite (read-only, see db.py). Every write is executed
 via the `hermes kanban` CLI (see kanban_cli.py). HTTP Basic Auth guards every
@@ -54,10 +54,40 @@ def _run_write(fn, *args, **kwargs):
     return JSONResponse({"ok": True, "message": kanban_cli.summary(proc)})
 
 
+def _run_json(fn, *args, **kwargs):
+    """Run a CLI op that emits --json; parse and return it or raise a 400/500."""
+    try:
+        proc = fn(*args, **kwargs)
+    except kanban_cli.CLIError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        return json.loads(proc.stdout or "{}")
+    except ValueError:
+        raise HTTPException(status_code=500, detail="CLI returned invalid JSON")
+
+
+def _run_text(fn, *args, **kwargs):
+    """Run a CLI op and return its raw stdout as a plain-text response."""
+    try:
+        proc = fn(*args, **kwargs)
+    except kanban_cli.CLIError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return PlainTextResponse(proc.stdout or "")
+
+
 def _reason_payload(payload, default="via web"):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="body must be a JSON object")
     return payload.get("note") or default
+
+
+async def _json_body(request, required=False):
+    try:
+        return await request.json()
+    except Exception:
+        if required:
+            raise HTTPException(status_code=400, detail="body must be a JSON object")
+        return {}
 
 
 # --- read endpoints ---------------------------------------------------------
@@ -98,11 +128,77 @@ def api_stats():
         return db.stats_fallback()
 
 
+# --- boards -----------------------------------------------------------------
+
+@app.get("/api/boards", dependencies=[Depends(require_auth)])
+def api_boards():
+    return _run_json(kanban_cli.boards_list, include_archived=True)
+
+
+@app.get("/api/boards/current", dependencies=[Depends(require_auth)])
+def api_current_board():
+    slug = db.current_board_slug()
+    name = None
+    try:
+        for b in _run_json(kanban_cli.boards_list, include_archived=True):
+            if b.get("slug") == slug:
+                name = b.get("name") or slug
+                break
+    except HTTPException:
+        pass
+    return {"slug": slug, "name": name or slug}
+
+
+@app.post("/api/boards", dependencies=[Depends(require_auth)])
+async def api_create_board(request: Request):
+    body = await _json_body(request, required=True)
+    slug = (body.get("slug") or "").strip()
+    if not slug:
+        raise HTTPException(status_code=400, detail="slug is required")
+    return _run_write(
+        kanban_cli.boards_create, slug,
+        name=(body.get("name") or "").strip() or None,
+        description=(body.get("description") or "").strip() or None,
+        icon=(body.get("icon") or "").strip() or None,
+        color=(body.get("color") or "").strip() or None,
+    )
+
+
+@app.post("/api/boards/{slug}/switch", dependencies=[Depends(require_auth)])
+def api_switch_board(slug: str):
+    res = _run_write(kanban_cli.boards_switch, slug)
+    db.refresh_current_board()
+    return res
+
+
+@app.post("/api/boards/{slug}/rename", dependencies=[Depends(require_auth)])
+async def api_rename_board(slug: str, request: Request):
+    body = await _json_body(request, required=True)
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    return _run_write(kanban_cli.boards_rename, slug, name)
+
+
+@app.post("/api/boards/{slug}/workdir", dependencies=[Depends(require_auth)])
+async def api_set_board_workdir(slug: str, request: Request):
+    body = await _json_body(request)
+    path = (body.get("path") or "").strip() or None
+    return _run_write(kanban_cli.boards_set_workdir, slug, path)
+
+
+@app.delete("/api/boards/{slug}", dependencies=[Depends(require_auth)])
+async def api_delete_board(slug: str, request: Request):
+    body = await _json_body(request)
+    delete = bool(body.get("delete")) if isinstance(body, dict) else False
+    return _run_write(kanban_cli.boards_rm, slug, delete=delete)
+
+
 # --- write endpoints --------------------------------------------------------
 
 @app.post("/api/tasks", dependencies=[Depends(require_auth)])
 async def api_create_task(request: Request):
-    body = await request.json()
+    body = await _json_body(request, required=True)
     title = (body.get("title") or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="title is required")
@@ -128,7 +224,7 @@ async def api_create_task(request: Request):
 
 @app.post("/api/tasks/{task_id}/action", dependencies=[Depends(require_auth)])
 async def api_task_action(task_id: str, request: Request):
-    body = await request.json()
+    body = await _json_body(request)
     action = body.get("action") if isinstance(body, dict) else None
     note = body.get("note") if isinstance(body, dict) else None
 
@@ -152,7 +248,7 @@ async def api_task_action(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/assign", dependencies=[Depends(require_auth)])
 async def api_assign(task_id: str, request: Request):
-    body = await request.json()
+    body = await _json_body(request, required=True)
     assignee = (body.get("assignee") or "").strip()
     if not assignee:
         raise HTTPException(status_code=400, detail="assignee is required")
@@ -161,7 +257,7 @@ async def api_assign(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/comment", dependencies=[Depends(require_auth)])
 async def api_comment(task_id: str, request: Request):
-    body = await request.json()
+    body = await _json_body(request, required=True)
     text = (body.get("body") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="comment body is required")
@@ -170,7 +266,7 @@ async def api_comment(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/link", dependencies=[Depends(require_auth)])
 async def api_link(task_id: str, request: Request):
-    body = await request.json()
+    body = await _json_body(request, required=True)
     other_id = (body.get("other_id") or "").strip()
     if not other_id:
         raise HTTPException(status_code=400, detail="other_id is required")
@@ -197,7 +293,7 @@ async def api_unlink(task_id: str, other_id: str, direction: str = None):
 
 @app.post("/api/tasks/{task_id}/set-model", dependencies=[Depends(require_auth)])
 async def api_set_model(task_id: str, request: Request):
-    body = await request.json()
+    body = await _json_body(request)
     model = (body.get("model") or "").strip() or None
     provider = (body.get("provider") or "").strip() or None
     return _run_write(kanban_cli.set_model, task_id, model, provider)
@@ -234,6 +330,183 @@ async def api_delete_attachment(task_id: str, aid: int):
     if not any(a["id"] == aid for a in detail["attachments"]):
         raise HTTPException(status_code=404, detail="attachment not found")
     return _run_write(kanban_cli.attach_rm, aid)
+
+
+# --- task extended (v2) -----------------------------------------------------
+
+@app.post("/api/tasks/{task_id}/edit", dependencies=[Depends(require_auth)])
+async def api_edit_task(task_id: str, request: Request):
+    body = await _json_body(request, required=True)
+    result = (body.get("result") or "").strip()
+    if not result:
+        raise HTTPException(status_code=400, detail="result is required")
+    summary = (body.get("summary") or "").strip() or None
+    metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, str):
+        metadata = json.dumps(metadata, ensure_ascii=False)
+    return _run_write(kanban_cli.edit, task_id, result, summary, metadata)
+
+
+@app.post("/api/tasks/{task_id}/specify", dependencies=[Depends(require_auth)])
+def api_specify(task_id: str):
+    return _run_write(kanban_cli.specify, task_id)
+
+
+@app.post("/api/tasks/{task_id}/decompose", dependencies=[Depends(require_auth)])
+def api_decompose(task_id: str):
+    return _run_write(kanban_cli.decompose, task_id)
+
+
+@app.post("/api/tasks/{task_id}/claim", dependencies=[Depends(require_auth)])
+async def api_claim(task_id: str, request: Request):
+    body = await _json_body(request)
+    ttl = body.get("ttl") if isinstance(body, dict) else None
+    if ttl is not None:
+        try:
+            ttl = int(ttl)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="ttl must be an integer")
+    return _run_write(kanban_cli.claim, task_id, ttl)
+
+
+@app.post("/api/tasks/{task_id}/heartbeat", dependencies=[Depends(require_auth)])
+async def api_heartbeat(task_id: str, request: Request):
+    body = await _json_body(request)
+    note = (body.get("note") or "").strip() or None if isinstance(body, dict) else None
+    return _run_write(kanban_cli.heartbeat, task_id, note)
+
+
+@app.post("/api/tasks/{task_id}/reassign", dependencies=[Depends(require_auth)])
+async def api_reassign(task_id: str, request: Request):
+    body = await _json_body(request, required=True)
+    assignee = (body.get("assignee") or "").strip()
+    if not assignee:
+        raise HTTPException(status_code=400, detail="assignee is required")
+    return _run_write(kanban_cli.reassign, task_id, assignee)
+
+
+@app.get("/api/tasks/{task_id}/context", dependencies=[Depends(require_auth)])
+def api_context(task_id: str):
+    return _run_text(kanban_cli.context, task_id)
+
+
+@app.get("/api/tasks/{task_id}/log", dependencies=[Depends(require_auth)])
+def api_log(task_id: str, tail: int = None):
+    return _run_text(kanban_cli.log, task_id, tail)
+
+
+@app.get("/api/tasks/{task_id}/notify", dependencies=[Depends(require_auth)])
+def api_notify_list(task_id: str):
+    return _run_json(kanban_cli.notify_list, task_id)
+
+
+@app.post("/api/tasks/{task_id}/notify", dependencies=[Depends(require_auth)])
+async def api_notify_subscribe(task_id: str, request: Request):
+    body = await _json_body(request, required=True)
+    platform = (body.get("platform") or "").strip()
+    chat_id = (body.get("chat_id") or body.get("chat-id") or "").strip()
+    if not platform or not chat_id:
+        raise HTTPException(status_code=400, detail="platform and chat_id are required")
+    return _run_write(
+        kanban_cli.notify_subscribe, task_id, platform, chat_id,
+        chat_type=(body.get("chat_type") or "").strip() or None,
+        thread_id=(body.get("thread_id") or "").strip() or None,
+        user_id=(body.get("user_id") or "").strip() or None,
+        notifier_profile=(body.get("notifier_profile") or "").strip() or None,
+    )
+
+
+@app.delete("/api/tasks/{task_id}/notify", dependencies=[Depends(require_auth)])
+async def api_notify_unsubscribe(task_id: str, request: Request):
+    body = await _json_body(request, required=True)
+    platform = (body.get("platform") or "").strip()
+    chat_id = (body.get("chat_id") or body.get("chat-id") or "").strip()
+    if not platform or not chat_id:
+        raise HTTPException(status_code=400, detail="platform and chat_id are required")
+    thread_id = (body.get("thread_id") or "").strip() or None
+    return _run_write(kanban_cli.notify_unsubscribe, task_id, platform, chat_id, thread_id)
+
+
+# --- swarm / global ---------------------------------------------------------
+
+@app.post("/api/swarm", dependencies=[Depends(require_auth)])
+async def api_swarm(request: Request):
+    body = await _json_body(request, required=True)
+    goal = (body.get("goal") or "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+    workers = []
+    for w in body.get("workers") or []:
+        profile = (w.get("profile") or "").strip()
+        if not profile:
+            continue
+        title = (w.get("title") or "").strip()
+        skills = w.get("skills")
+        if isinstance(skills, str):
+            skills = [s.strip() for s in skills.split(",") if s.strip()]
+        if not isinstance(skills, list):
+            skills = []
+        comp = profile
+        if title:
+            comp += ":" + title
+        if skills:
+            comp += ":" + ",".join(str(s).strip() for s in skills if str(s).strip())
+        workers.append(comp)
+    if not workers:
+        raise HTTPException(status_code=400, detail="at least one worker is required")
+    verifier = (body.get("verifier") or "").strip()
+    synthesizer = (body.get("synthesizer") or "").strip()
+    if not verifier or not synthesizer:
+        raise HTTPException(status_code=400, detail="verifier and synthesizer are required")
+    priority = body.get("priority")
+    created_by = (body.get("created_by") or "").strip() or "web"
+    return _run_write(kanban_cli.swarm, goal, workers, verifier, synthesizer, priority=priority, created_by=created_by)
+
+
+@app.get("/api/diagnostics", dependencies=[Depends(require_auth)])
+def api_diagnostics(severity: str = None, task: str = None):
+    return _run_json(kanban_cli.diagnostics, severity=severity, task=task)
+
+
+@app.get("/api/events", dependencies=[Depends(require_auth)])
+def api_events(since: int = None, kinds: str = None):
+    kind_list = [k.strip() for k in (kinds or "").split(",") if k.strip()] or None
+    return db.get_events(since=since, kinds=kind_list)
+
+
+@app.post("/api/gc", dependencies=[Depends(require_auth)])
+async def api_gc(request: Request):
+    body = await _json_body(request)
+    event_days = body.get("event_retention_days") if isinstance(body, dict) else None
+    log_days = body.get("log_retention_days") if isinstance(body, dict) else None
+    if event_days is not None:
+        try:
+            event_days = int(event_days)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="event_retention_days must be an integer")
+    if log_days is not None:
+        try:
+            log_days = int(log_days)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="log_retention_days must be an integer")
+    return _run_write(kanban_cli.gc, event_retention_days=event_days, log_retention_days=log_days)
+
+
+@app.post("/api/repair", dependencies=[Depends(require_auth)])
+def api_repair():
+    try:
+        proc = kanban_cli.repair()
+    except kanban_cli.CLIError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        return json.loads(proc.stdout or "{}")
+    except ValueError:
+        return {"ok": proc.returncode == 0, "message": kanban_cli.summary(proc)}
+
+
+@app.get("/api/assignees", dependencies=[Depends(require_auth)])
+def api_assignees():
+    return _run_json(kanban_cli.assignees)
 
 
 # --- static frontend --------------------------------------------------------
