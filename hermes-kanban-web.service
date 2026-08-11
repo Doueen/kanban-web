@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes Kanban Web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hermes/kanban-web
+EnvironmentFile=/opt/hermes/kanban-web/.env
+ExecStart=/opt/hermes/kanban-web/venv/bin/uvicorn app:app --host 0.0.0.0 --port 9120
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

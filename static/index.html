@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Hermes Kanban</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">⟨ Hermes Kanban ⟩</div>
+    <div class="controls">
+      <div class="seg" id="view-seg">
+        <button id="view-board" class="active" data-view="board">看板</button>
+        <button id="view-list" data-view="list">列表</button>
+      </div>
+      <input id="search" type="search" placeholder="搜索任务…" autocomplete="off">
+      <button id="refresh" title="刷新" aria-label="刷新">⟳</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="board-view" class="view" aria-label="看板">
+      <div id="board" class="board"></div>
+    </section>
+    <section id="list-view" class="view hidden" aria-label="列表">
+      <div class="list-filters">
+        <select id="list-status" aria-label="按状态筛选">
+          <option value="">全部状态</option>
+        </select>
+        <select id="list-assignee" aria-label="按指派筛选">
+          <option value="">全部指派</option>
+        </select>
+      </div>
+      <div id="list-tasks" class="list-tasks"></div>
+    </section>
+  </main>
+
+  <button id="fab" title="新建任务" aria-label="新建任务">＋</button>
+
+  <div id="drawer" class="drawer hidden">
+    <div id="drawer-content" class="drawer-inner"></div>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-scrim" data-close="modal"></div>
+    <div id="modal-content" class="modal-box"></div>
+  </div>
+
+  <div id="menu" class="menu hidden"></div>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
