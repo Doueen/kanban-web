@@ -511,4 +511,4 @@ def api_assignees():
 
 # --- static frontend --------------------------------------------------------
 
-app.mount("/", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="static")
+app.mount("/", StaticFiles(directory=str(BASE_DIR / "web" / "dist"), html=True), name="static")
