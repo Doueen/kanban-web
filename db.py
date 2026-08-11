@@ -25,6 +25,7 @@ _current_board = None
 _current_board_ts = 0.0
 
 STATUS_LABELS = {
+    "triage": "待梳理",
     "todo": "待办",
     "ready": "就绪",
     "running": "运行中",
@@ -33,7 +34,6 @@ STATUS_LABELS = {
     "review": "评审",
     "done": "完成",
     "archived": "归档",
-    "triage": "待梳理",
 }
 
 TASK_COLS = (

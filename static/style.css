@@ -861,3 +861,112 @@ body.no-app #topbar, body.no-app #main, body.no-app #fab, body.no-app #bottom-na
   }
   .bg-grid, .bg-grid::after { animation: none !important; }
 }
+
+/* ================= v3 polish：Linear 式精致化 + 移动端 UX ================= */
+
+/* 全局键盘焦点环 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* 按钮/图标：按压反馈 */
+.btn, .btn-sm, .icon-btn, .col-fold, .menu-btn, .nav-btn, .top-nav-btn, .link-del, .attach-del, .modal-tab {
+  transition: transform 0.08s ease, border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s, opacity 0.15s;
+}
+.btn:active, .btn-sm:active, .icon-btn:active, .col-fold:active, .menu-btn:active, .top-nav-btn:active { transform: scale(0.94); }
+.btn-primary { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 4px 18px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* 卡片：左缘状态条 + 顶部微光渐变 + hover 微升 */
+.card {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, var(--c, #8b95ad) 4%), var(--card) 55%);
+}
+.card::after {
+  content: ""; position: absolute; left: -1px; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 3px; background: var(--c, #8b95ad); opacity: 0.55;
+}
+.card:hover { transform: translateY(-2px); }
+.card:hover::after { opacity: 1; box-shadow: 0 0 10px color-mix(in srgb, var(--c, #8b95ad) 50%, transparent); }
+.card:hover .card-title { color: var(--accent); }
+.card-title { transition: color 0.15s; }
+
+/* 列：层次 + 列头分隔线 + 计数状态色 */
+.column { background: color-mix(in srgb, var(--bg2) 93%, transparent); }
+.column-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  margin-bottom: 8px; padding-bottom: 9px;
+}
+.column-count {
+  background: color-mix(in srgb, var(--c, #8b95ad) 13%, transparent);
+  color: var(--c, var(--muted));
+  border-color: color-mix(in srgb, var(--c, #8b95ad) 36%, transparent);
+  font-weight: 600;
+}
+
+/* 空状态：图标化 */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty::before { content: "◌"; font-size: 24px; line-height: 1; opacity: 0.45; }
+
+/* 弹窗：Dialog 级阴影 + 移动端底部式 */
+.modal-box {
+  border-radius: 16px;
+  box-shadow: 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent),
+              0 10px 30px rgba(0, 0, 0, 0.4),
+              0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 20px;
+}
+@media (max-width: 619px) {
+  .modal { padding: 0; align-items: flex-end; }
+  .modal-box { max-height: 88vh; border-radius: 16px 16px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); animation: slideUp 0.22s cubic-bezier(0.2, 0.8, 0.3, 1); }
+}
+
+/* 底部导航：激活弹起 + 图标呼吸 */
+#bottom-nav { box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.25); }
+.nav-btn { position: relative; }
+.nav-btn .nav-ic { display: inline-block; transition: transform 0.18s ease; }
+.nav-btn.active .nav-ic { transform: translateY(-2px); }
+.nav-btn.active { text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent); }
+.nav-btn:active .nav-ic { transform: scale(0.85); }
+
+/* FAB：光晕 + 按压 */
+#fab { box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+#fab:hover { filter: brightness(1.08); }
+#fab:active { transform: scale(0.9); }
+
+/* toast：移动端安全区 + 层次 */
+#toast { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); backdrop-filter: blur(8px); }
+
+/* 抽屉：handle 强化 + 顶部渐隐 */
+.drawer-handle { background: var(--muted); opacity: 0.7; }
+.drawer-inner { scrollbar-width: thin; }
+@media (max-width: 619px) {
+  .drawer-inner { padding-top: 18px; }
+  .detail-title { font-size: 20px; }
+  .detail-actions .btn-sm { min-height: 44px; }
+}
+
+/* 看板：横滑边缘渐隐提示 */
+.board { scrollbar-width: thin; }
+#board-view { position: relative; }
+#board-view::after {
+  content: ""; position: absolute; right: 0; top: 4px; bottom: 14px; width: 34px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--bg) 92%, transparent));
+  pointer-events: none; z-index: 3;
+}
+
+/* 列表行 hover 微升 */
+.list-row:hover { transform: translateY(-1px); }
+.list-row { transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+
+/* 详情区块 hover 边框微亮 */
+.detail-section { transition: border-color 0.15s; }
+.detail-section:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
+
+/* 输入框统一 focus */
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* 滚动条：更细的主题色 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 35%, transparent); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted) 55%, transparent); }
+::-webkit-scrollbar-track { background: transparent; }

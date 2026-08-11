@@ -580,7 +580,7 @@ function openEditResultModal(t) {
       if (state.detailId) openDetail(state.detailId);
     } catch (err) { toast("保存失败: " + err.message, "error"); }
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 /* ---------- menu widget ---------- */
@@ -976,7 +976,7 @@ function promptNoteAndRun(t, action, label) {
     closeModal();
     await runAction(t.id, action, el("note-input").value.trim());
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 function closeDrawer() {
@@ -1089,7 +1089,7 @@ function renderCreateNormal(prefill) {
       toast("创建失败: " + err.message, "error");
     }
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 function readSelect(hostId) {
@@ -1183,7 +1183,7 @@ function renderCreateSwarm(prefill) {
       toast("创建失败: " + err.message, "error");
     }
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 function openAssignModal(t) {
@@ -1211,7 +1211,7 @@ function openAssignModal(t) {
       if (state.detailId) openDetail(state.detailId);
     } catch (err) { toast("失败: " + err.message, "error"); }
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 function openModelModal(t) {
@@ -1235,7 +1235,7 @@ function openModelModal(t) {
       if (state.detailId) openDetail(state.detailId);
     } catch (err) { toast("失败: " + err.message, "error"); }
   };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 /* ---------- stats view ---------- */
@@ -1487,7 +1487,7 @@ function confirmAction(message, fn, danger = false) {
       <button class="btn" data-close>取消</button>
     </div>`);
   $("[data-confirm]").onclick = async () => { closeModal(); await fn(); };
-  $("[data-close]").onclick = closeModal;
+  $("#modal-content [data-close]").onclick = closeModal;
 }
 
 function renderSettingsNotify() {
@@ -1574,7 +1574,7 @@ function renderSettingsMaintain() {
         toast(res.message || "GC 完成", "ok");
       } catch (err) { toast("GC 失败: " + err.message, "error"); }
     };
-    $("[data-close]").onclick = closeModal;
+    $("#modal-content [data-close]").onclick = closeModal;
   });
   el("st-repair").addEventListener("click", async () => {
     toast("DB 检查中…", "info");
