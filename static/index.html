@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2304060c'/%3E%3Crect x='1.5' y='1.5' width='29' height='29' rx='6' fill='none' stroke='%235ff0e0' stroke-width='2'/%3E%3Ctext x='16' y='22' font-size='15' text-anchor='middle' fill='%235ff0e0' font-family='monospace'%3E%26%2310296;%26%2310297;%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="hud">
+<body data-theme="linear">
   <div class="bg-grid" aria-hidden="true"></div>
 
   <div id="login-screen" class="login-screen hidden" role="dialog" aria-modal="true" aria-label="登录">
@@ -32,7 +32,7 @@
 
   <header id="topbar">
     <div class="brand">
-      <span class="brand-brackets">⟨</span><span class="brand-name">Hermes Kanban</span><span class="brand-brackets">⟩</span>
+      <span class="brand-brackets">⟨</span><span class="brand-name">Hermes Kanban</span><span class="brand-short">Kanban</span><span class="brand-brackets">⟩</span>
       <span class="brand-sep">·</span>
       <span id="board-name" class="brand-board">…</span>
     </div>
@@ -43,6 +43,7 @@
       <button class="top-nav-btn" data-nav="settings">设置</button>
     </nav>
     <div class="controls">
+      <button id="search-open" class="icon-btn" title="搜索" aria-label="搜索">⌕</button>
       <div class="theme-wrap" id="theme-wrap">
         <button id="theme-btn" class="icon-btn" title="切换主题" aria-label="切换主题">🎨</button>
         <div id="theme-pop" class="theme-pop hidden"></div>
@@ -50,16 +51,22 @@
       <input id="search" type="search" placeholder="搜索任务…" autocomplete="off" aria-label="搜索">
       <button id="refresh" class="icon-btn" title="刷新" aria-label="刷新">⟳</button>
     </div>
+    <div id="search-drop" class="search-drop hidden">
+      <input id="search-mobile" type="search" placeholder="搜索任务…" autocomplete="off" aria-label="移动端搜索">
+      <button id="search-cancel" class="btn">取消</button>
+    </div>
   </header>
 
   <main id="main">
     <section id="board-view" class="view active" aria-label="看板">
+      <div id="board-chips" class="board-chips hidden"></div>
       <div id="board" class="board"></div>
+      <div id="board-dots" class="board-dots hidden"></div>
     </section>
 
     <section id="list-view" class="view" aria-label="列表">
+      <div id="list-chips" class="board-chips hidden"></div>
       <div class="list-toolbar">
-        <div id="list-status-wrap" class="filter-wrap"></div>
         <div id="list-assignee-wrap" class="filter-wrap"></div>
         <div class="filter-wrap grow">
           <input id="list-search" type="search" placeholder="搜索…" autocomplete="off" aria-label="列表搜索">
@@ -98,6 +105,10 @@
       <div class="panel">
         <div class="panel-head"><h3>通知订阅管理</h3></div>
         <div id="settings-notify"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>移动端看板</h3></div>
+        <div id="settings-mobile"></div>
       </div>
       <div class="panel">
         <div class="panel-head"><h3>维护</h3></div>

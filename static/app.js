@@ -1,8 +1,9 @@
 "use strict";
 
 /* ============================================================================
-   Hermes Kanban Web — 前端应用 (v2)
+   Hermes Kanban Web — 前端应用 (v3)
    4 页面（看板/列表/统计/设置）+ 底部导航 + 详情抽屉 + 自定义控件。
+   4 套主题（linear/bright/glass/geek）+ 移动端看板交互（chips/滑动切列/空列折叠/长按移动/进度指示/快捷完成）。
    ========================================================================== */
 
 /* ---------- state ---------- */
@@ -13,6 +14,7 @@ const state = {
   boards: [],
   currentBoard: null,
   search: "",
+  boardFilter: "all",
   listStatus: "",
   listAssignee: "",
   listArchived: false,
@@ -32,12 +34,38 @@ const STATUS = {
 };
 
 const THEMES = [
-  { id: "hud", label: "终端 HUD", bg: "#04060c", accent: "#5ff0e0" },
-  { id: "violet", label: "极夜紫", bg: "#0a0618", accent: "#8b7cf6" },
-  { id: "paper", label: "暖纸", bg: "#f7f1e3", accent: "#b45309" },
-  { id: "sakura", label: "樱花", bg: "#fff0f5", accent: "#ec4899" },
-  { id: "bay", label: "海湾", bg: "#f0f7ff", accent: "#0ea5e9" },
+  { id: "linear", label: "线性精修", bg: "#08090a", accent: "#45e0cd" },
+  { id: "bright", label: "明亮现代", bg: "#f5f7fb", accent: "#3b82f6" },
+  { id: "glass", label: "玻璃拟态", bg: "#0a0f1e", accent: "#8ab4ff" },
+  { id: "geek", label: "终端极客", bg: "#05070c", accent: "#5ff0e0" },
 ];
+
+/* ---------- 移动端看板开关（localStorage 记忆，键 kb-mob-<name>） ---------- */
+const MOB_SWITCHES = [
+  { key: "chips", label: "状态筛选 Chips", desc: "看板上方状态快捷筛选", def: true },
+  { key: "swipe", label: "左右滑动切列", desc: "单列模式下左右滑动切换状态", def: true },
+  { key: "autofold", label: "空列自动折叠", desc: "移动端自动折叠空列", def: true },
+  { key: "longpress", label: "长按移动", desc: "长按卡片打开「移动到」面板", def: true },
+  { key: "indicator", label: "进度指示器", desc: "看板下方当前列位置圆点", def: true },
+  { key: "quickact", label: "快捷完成", desc: "卡片上的 ✓ 快捷完成按钮", def: true },
+];
+
+function getMobSwitch(key) {
+  try {
+    const v = localStorage.getItem("kb-mob-" + key);
+    if (v === null) {
+      const cfg = MOB_SWITCHES.find((s) => s.key === key);
+      return cfg ? cfg.def : true;
+    }
+    return v === "1" || v === "true";
+  } catch (_) { return true; }
+}
+function setMobSwitch(key, val) {
+  try { localStorage.setItem("kb-mob-" + key, val ? "1" : "0"); } catch (_) { /* noop */ }
+}
+
+const isMobile = () => matchMedia("(max-width: 619px)").matches;
+const isTouch = () => matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
 
 /* ---------- utils ---------- */
 const el = (id) => document.getElementById(id);
@@ -177,7 +205,7 @@ function badge(status) {
 
 /* ---------- theme ---------- */
 function applyTheme(id) {
-  document.body.dataset.theme = THEMES.some((t) => t.id === id) ? id : "hud";
+  document.body.dataset.theme = THEMES.some((t) => t.id === id) ? id : "linear";
   try { localStorage.setItem("kb-theme", document.body.dataset.theme); } catch (_) { /* noop */ }
   renderThemePop();
 }
@@ -309,6 +337,8 @@ function cardHtml(t, i) {
   const assignee = t.assignee
     ? `<span class="card-assignee" title="${esc(t.assignee)}">@${esc(t.assignee)}</span>` : "";
   const prio = t.priority > 0 ? `<span class="card-priority" title="优先级 ${t.priority}">P${t.priority}</span>` : "";
+  const quick = getMobSwitch("quickact") && t.status !== "done" && t.status !== "archived"
+    ? `<button class="card-quick" data-quick="${esc(t.id)}" title="完成" aria-label="完成">✓</button>` : "";
   return `
   <div class="card st-${esc(t.status)}" draggable="true" data-id="${esc(t.id)}" style="animation-delay:${Math.min(i, 7) * 40}ms">
     <div class="card-title">${esc(t.title)}</div>
@@ -316,6 +346,7 @@ function cardHtml(t, i) {
       <div class="card-tags">${prio}${assignee}</div>
       <div class="card-tags">
         <span class="card-id">${esc(t.id)}</span>
+        ${quick}
         <button class="menu-btn" data-menu="${esc(t.id)}" aria-label="操作菜单">⋯</button>
       </div>
     </div>
@@ -327,7 +358,7 @@ function getCollapsed() {
 }
 function setCollapsed(status, val) {
   const c = getCollapsed();
-  if (val) c[status] = true; else delete c[status];
+  c[status] = !!val;
   try { localStorage.setItem("kb-collapsed", JSON.stringify(c)); } catch (_) { /* noop */ }
 }
 
@@ -337,9 +368,25 @@ function renderBoard() {
   const first = !board.classList.contains("rendered");
   const collapsed = getCollapsed();
   const firstVisit = !localStorage.getItem("kb-collapsed"); // 真正首次：归档列默认折叠
-  board.innerHTML = state.board.statuses.map((col) => {
-    const isCollapsed = collapsed[col.status] === true ||
-      (firstVisit && col.status === "archived");
+  const autoFold = getMobSwitch("autofold");
+  const isMobileView = isMobile();
+  const single = state.boardFilter !== "all";
+
+  if (single && !state.board.statuses.some((c) => c.status === state.boardFilter)) {
+    state.boardFilter = "all";
+  }
+  board.classList.toggle("single", single);
+
+  const cols = single
+    ? state.board.statuses.filter((c) => c.status === state.boardFilter)
+    : state.board.statuses;
+
+  board.innerHTML = cols.map((col) => {
+    const manual = collapsed[col.status];
+    const isCollapsed = manual === true ||
+      (manual === undefined &&
+        ((firstVisit && col.status === "archived") ||
+         (autoFold && isMobileView && !single && col.count === 0)));
     return `
     <section class="column st-${esc(col.status)}${isCollapsed ? " folded" : ""}" data-status="${esc(col.status)}">
       <div class="column-head">
@@ -358,22 +405,196 @@ function renderBoard() {
     board.classList.add("rendered");
     setTimeout(() => board.classList.remove("enter"), 400);
   }
+  renderBoardChips();
+  renderBoardDots();
   wireDragDrop(board);
+  wireBoardSwipe();
+  wireLongPress();
+}
+
+/* ---------- board chips + dots ---------- */
+function renderBoardChips() {
+  const host = el("board-chips");
+  if (!getMobSwitch("chips") || !state.board) { host.classList.add("hidden"); return; }
+  host.classList.remove("hidden");
+  host.innerHTML = [
+    { value: "all", label: "全部" },
+    ...state.board.statuses.map((c) => ({ value: c.status, label: c.label })),
+  ].map((c) => `
+    <button class="chip${state.boardFilter === c.value ? " active" : ""}" data-filter="${esc(c.value)}">
+      ${esc(c.label)}
+    </button>`).join("");
+}
+
+function renderBoardDots() {
+  const host = el("board-dots");
+  if (!getMobSwitch("indicator") || !state.board) { host.classList.add("hidden"); return; }
+  host.classList.remove("hidden");
+  host.innerHTML = state.board.statuses.map(() => `<span class="dot-e"></span>`).join("");
+  updateBoardDots();
+}
+
+function updateBoardDots() {
+  const host = el("board-dots");
+  if (host.classList.contains("hidden") || !state.board) return;
+  let idx = 0;
+  if (state.boardFilter !== "all") {
+    idx = state.board.statuses.findIndex((c) => c.status === state.boardFilter);
+    if (idx < 0) idx = 0;
+  } else {
+    const board = el("board");
+    const colEls = $$(".column", board);
+    if (colEls.length) {
+      const rect = board.getBoundingClientRect();
+      const center = rect.left + rect.width / 2;
+      let best = 0, bestDist = Infinity;
+      colEls.forEach((c, i) => {
+        const cr = c.getBoundingClientRect();
+        const d = Math.abs(cr.left + cr.width / 2 - center);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+      idx = best;
+    }
+  }
+  $$(".dot-e", host).forEach((d, i) => d.classList.toggle("active", i === idx));
+}
+
+/* ---------- 左右滑动切列（仅单列模式） ---------- */
+function wireBoardSwipe() {
+  const board = el("board");
+  if (board._swipe) return;
+  board._swipe = true;
+  let startX = null, startY = null;
+  board.addEventListener("touchstart", (e) => {
+    startX = null; startY = null;
+    if (!getMobSwitch("swipe")) return;
+    if (state.boardFilter === "all" || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  board.addEventListener("touchmove", (e) => {
+    if (startX == null) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) e.preventDefault();
+  }, { passive: false });
+  board.addEventListener("touchend", (e) => {
+    if (startX == null) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    startX = null; startY = null;
+    if (state.boardFilter === "all") return;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      const order = STATUS_ORDER;
+      const idx = order.indexOf(state.boardFilter);
+      if (idx < 0) return;
+      const target = dx < 0 ? order[idx + 1] : order[idx - 1];
+      if (!target) return;
+      state.boardFilter = target;
+      renderBoard();
+    }
+  }, { passive: true });
+}
+
+/* ---------- 长按卡片 → 移动到面板（仅触屏） ---------- */
+let _longPressTimer = null;
+let _longPressCard = null;
+let _longPressStart = null;
+let _suppressClickUntil = 0;
+
+function wireLongPress() {
+  if (!isTouch()) return;
+  const board = el("board");
+  if (board._longPress) return;
+  board._longPress = true;
+  board.addEventListener("touchstart", (e) => {
+    _cancelLongPress();
+    if (!getMobSwitch("longpress")) return;
+    const card = e.target.closest(".card");
+    if (!card || e.target.closest("button")) return;
+    _longPressCard = card;
+    _longPressStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    card.classList.add("long-press");
+    _longPressTimer = setTimeout(() => {
+      if (!_longPressCard) return;
+      const id = _longPressCard.dataset.id;
+      if (navigator.vibrate) navigator.vibrate(30);
+      _suppressClickUntil = Date.now() + 400;
+      _cancelLongPress();
+      openMovePanel(id);
+    }, 400);
+  }, { passive: true });
+  board.addEventListener("touchmove", (e) => {
+    if (!_longPressCard || !_longPressStart) return;
+    const dx = Math.abs(e.touches[0].clientX - _longPressStart.x);
+    const dy = Math.abs(e.touches[0].clientY - _longPressStart.y);
+    if (dx > 12 || dy > 12) _cancelLongPress();
+  }, { passive: true });
+  board.addEventListener("touchend", _cancelLongPress, { passive: true });
+  board.addEventListener("touchcancel", _cancelLongPress, { passive: true });
+}
+
+function _cancelLongPress() {
+  if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+  if (_longPressCard) { _longPressCard.classList.remove("long-press"); _longPressCard = null; }
+  _longPressStart = null;
+}
+
+function openMovePanel(id) {
+  const task = findTask(id);
+  if (!task) return;
+  closeMenu(); closeSel(); closeModal();
+  const scrim = document.createElement("div");
+  scrim.className = "move-scrim";
+  scrim.addEventListener("click", () => { scrim.remove(); panel.remove(); });
+  const panel = document.createElement("div");
+  panel.className = "move-panel";
+  panel.id = "move-panel";
+  const statusBtns = STATUS_ORDER.map((st) => {
+    const cur = st === task.status;
+    return `
+      <button class="move-item${cur ? " disabled" : ""}" data-move="${st}"${cur ? " disabled" : ""}>
+        <span class="dot st-${st}" style="--c:${STATUS_CSS[st]}"></span>
+        <span>${STATUS[st]}</span>
+        ${cur ? `<span class="move-cur">✓</span>` : ""}
+      </button>`;
+  }).join("");
+  const actBtns =
+    (task.status !== "done" && task.status !== "archived" ? `<button class="btn btn-sm" data-move-action="complete">完成</button>` : "") +
+    (task.status !== "archived" ? `<button class="btn btn-sm" data-move-action="archive">归档</button>` : "");
+  panel.innerHTML = `
+    <div class="move-handle"></div>
+    <h3 class="move-title">移动到</h3>
+    <div class="move-grid">${statusBtns}</div>
+    ${actBtns ? `<div class="move-sep"></div><div class="move-actions">${actBtns}</div>` : ""}`;
+  document.body.appendChild(scrim);
+  document.body.appendChild(panel);
+  panel.addEventListener("click", async (e) => {
+    const st = e.target.closest("[data-move]");
+    const act = e.target.closest("[data-move-action]");
+    const cur = findTask(id);
+    if (!cur) return;
+    if (act) {
+      scrim.remove(); panel.remove();
+      await runAction(cur.id, act.dataset.moveAction);
+      return;
+    }
+    if (st) {
+      const target = st.dataset.move;
+      if (target === cur.status) return;
+      const move = actionForTarget(cur, target);
+      if (!move) { toast(`无法移动到「${STATUS[target] || target}」`, "error"); return; }
+      scrim.remove(); panel.remove();
+      await runAction(cur.id, move.action);
+    }
+  });
 }
 
 /* ---------- list rendering ---------- */
 function renderListFilters() {
-  const statusHost = el("list-status-wrap");
   const assigneeHost = el("list-assignee-wrap");
-  statusHost.innerHTML = "";
   assigneeHost.innerHTML = "";
-  const statusOpts = (state.board ? state.board.statuses : []).map((c) => ({ value: c.status, label: c.label }));
-  statusHost.appendChild(mkSelect({
-    options: [{ value: "", label: "全部状态" }, ...statusOpts],
-    value: state.listStatus,
-    placeholder: "全部状态",
-    onChange: (v) => { state.listStatus = v; renderList(); },
-  }));
+  renderListChips();
   const assigneeOpts = (state.assignees || []).map((a) => ({ value: a.name, label: a.name }));
   assigneeHost.appendChild(mkSelect({
     options: [{ value: "", label: "全部指派" }, ...assigneeOpts],
@@ -381,6 +602,19 @@ function renderListFilters() {
     placeholder: "全部指派",
     onChange: (v) => { state.listAssignee = v; renderList(); },
   }));
+}
+
+function renderListChips() {
+  const host = el("list-chips");
+  if (!state.board) { host.classList.add("hidden"); return; }
+  host.classList.remove("hidden");
+  host.innerHTML = [
+    { value: "", label: "全部" },
+    ...state.board.statuses.map((c) => ({ value: c.status, label: c.label })),
+  ].map((c) => `
+    <button class="chip${state.listStatus === c.value ? " active" : ""}" data-lfilter="${esc(c.value)}">
+      ${esc(c.label)}
+    </button>`).join("");
 }
 
 function renderList() {
@@ -401,14 +635,17 @@ function renderList() {
   const first = !container.classList.contains("rendered");
   container.innerHTML = tasks.map((t, i) => `
     <div class="list-row st-${esc(t.status)}" data-open="${esc(t.id)}" style="animation-delay:${Math.min(i, 7) * 40}ms">
-      <div class="list-row-title">${esc(t.title)}</div>
-      <div class="list-row-meta">
-        ${badge(t.status)}
-        ${t.priority > 0 ? `<span class="card-priority">P${t.priority}</span>` : ""}
-        <span class="card-id">${esc(t.id)}</span>
-        ${t.assignee ? `<span>@${esc(t.assignee)}</span>` : ""}
-        <span title="${fmtTime(t.created_at)}">创建于 ${ago(t.created_at)}</span>
+      <div class="list-row-main">
+        <div class="list-row-title">${esc(t.title)}</div>
+        <div class="list-row-meta">
+          ${badge(t.status)}
+          ${t.priority > 0 ? `<span class="card-priority">P${t.priority}</span>` : ""}
+          <span class="card-id">${esc(t.id)}</span>
+          ${t.assignee ? `<span>@${esc(t.assignee)}</span>` : ""}
+          <span title="${fmtTime(t.created_at)}">创建于 ${ago(t.created_at)}</span>
+        </div>
       </div>
+      <button class="menu-btn list-menu-btn" data-menu="${esc(t.id)}" aria-label="操作菜单">⋯</button>
     </div>`).join("");
   if (first) {
     container.classList.add("enter");
@@ -558,7 +795,7 @@ function openEditResultModal(t) {
     <div class="input-row"><label>结果 *</label><textarea id="e-result" placeholder="Backfilled task result text">${esc(t.result || "")}</textarea></div>
     <div class="input-row"><label>摘要（可选）</label><textarea id="e-summary" placeholder="Structured handoff summary"></textarea></div>
     <div class="input-row"><label>元数据（可选，JSON）</label><textarea id="e-metadata" placeholder='{"changed_files": [...]}'></textarea></div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-confirm>保存</button>
       <button class="btn" data-close>取消</button>
     </div>`);
@@ -584,13 +821,32 @@ function openEditResultModal(t) {
 }
 
 /* ---------- menu widget ---------- */
+const MENU_ICON = {
+  view: "👁", reclaim: "↺", heartbeat: "♥", claim: "✋", specify: "✦",
+  decompose: "⑂", "edit-result": "✎", promote: "↑", unblock: "↗",
+  "request-changes": "↩", "request-review": "★", complete: "✓", block: "■",
+  schedule: "⏱", archive: "🗄", assign: "@", child: "⊞", context: "📄", log: "≡",
+};
+
 function openMenu(anchor, items, task) {
   closeMenu();
   const menu = el("menu");
   menu.innerHTML = items.map((it) => {
     const cls = it.danger ? ' class="danger"' : "";
-    return `<button data-mi="${esc(it.action)}"${cls}>${esc(it.label)}</button>`;
+    const ic = MENU_ICON[it.action] ? `<span class="mi-ic">${MENU_ICON[it.action]}</span>` : "";
+    return `<button data-mi="${esc(it.action)}"${cls}>${ic}<span>${esc(it.label)}</span></button>`;
   }).join("");
+  if (isMobile()) {
+    const scrim = document.createElement("div");
+    scrim.className = "menu-scrim";
+    scrim.addEventListener("click", closeMenu);
+    document.body.appendChild(scrim);
+    menu.classList.remove("hidden");
+    menu.style.left = "";
+    menu.style.top = "";
+    menu._task = task;
+    return;
+  }
   menu.classList.remove("hidden");
   const r = anchor.getBoundingClientRect();
   const mw = Math.max(170, menu.offsetWidth);
@@ -603,7 +859,11 @@ function openMenu(anchor, items, task) {
   menu._task = task;
 }
 
-function closeMenu() { el("menu").classList.add("hidden"); }
+function closeMenu() {
+  el("menu").classList.add("hidden");
+  const s = document.querySelector(".menu-scrim");
+  if (s) s.remove();
+}
 
 /* ---------- drag & drop (desktop) ---------- */
 function wireDragDrop(board) {
@@ -658,17 +918,16 @@ async function openDetail(id, opts = {}) {
 function renderDetail(d) {
   const t = d.task;
   const content = el("drawer-content");
+  content.className = "drawer-inner st-" + t.status;
 
   content.innerHTML = `
   <div class="drawer-handle"></div>
   <div class="detail-head">
-    <div>
-      ${badge(t.status)}
-      ${t.priority > 0 ? `<span class="card-priority"> P${t.priority}</span>` : ""}
-    </div>
-    <button class="btn btn-sm btn-ghost" data-act="close">✕ 关闭</button>
+    ${badge(t.status)}
+    ${t.priority > 0 ? `<span class="card-priority"> P${t.priority}</span>` : ""}
+    <h2 class="detail-title">${esc(t.title)}</h2>
+    <button class="btn btn-sm btn-ghost" data-act="close" aria-label="关闭">✕<span class="close-txt"> 关闭</span></button>
   </div>
-  <h2 class="detail-title">${esc(t.title)}</h2>
 
   <div class="detail-actions">
     ${menuButtonsHtml(t)}
@@ -752,7 +1011,7 @@ function renderDetail(d) {
         <button class="icon-del" data-del-attach="${a.id}" title="删除附件">✕</button>
       </div>`).join("") || `<div class="empty" style="padding:8px;font-size:12px">无附件</div>`}
     <div class="attach-upload">
-      <input type="file" id="attach-file">
+      <label class="file-label" for="attach-file">选择文件<input type="file" id="attach-file" class="hidden"></label>
       <button class="btn btn-sm" data-act="upload">上传</button>
     </div>
   </div>
@@ -764,7 +1023,7 @@ function renderDetail(d) {
         <div class="comment-head"><span class="comment-author">${esc(c.author)}</span><span>${fmtTime(c.created_at)}</span></div>
         <div class="comment-body">${esc(c.body)}</div>
       </div>`).join("") || `<div class="empty" style="padding:8px;font-size:12px">暂无评论</div>`}
-    <div class="attach-upload" style="margin-top:10px">
+    <div class="comment-compose">
       <textarea id="comment-input" placeholder="写评论…" style="flex:1;min-width:200px"></textarea>
       <button class="btn btn-primary btn-sm" data-act="comment">发送</button>
     </div>
@@ -968,7 +1227,7 @@ function promptNoteAndRun(t, action, label) {
   openModal(`
     <h2 style="margin-top:0">${ACTION_LABEL[action] || action}</h2>
     <div class="input-row"><label>${label}</label><textarea id="note-input" placeholder="可选备注…"></textarea></div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-confirm>确认</button>
       <button class="btn" data-close>取消</button>
     </div>`);
@@ -1039,11 +1298,11 @@ function renderCreateNormal(prefill) {
       <div><label>工作区</label><div class="sel-host" id="f-workspace-host"></div></div>
       <div><label>父任务 ID（可选）</label><input id="f-parent" type="text" placeholder="t_xxxx" value="${esc(prefill.parent || "")}"></div>
     </div>
-    <div class="switch-row input-row">
+    <div class="switch-row input-row triage-row">
       <span style="color:var(--muted)">放入待梳理（triage）</span>
-      <label class="switch"><input id="f-triage" type="checkbox"><span class="slider"></span></label>
+      <span class="switch"><input id="f-triage" type="checkbox"><span class="slider"></span></span>
     </div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-create>创建</button>
       <button class="btn" data-close>取消</button>
     </div>`;
@@ -1138,7 +1397,7 @@ function renderCreateSwarm(prefill) {
       <div><label>优先级</label><div class="sel-host" id="sw-priority-host"></div></div>
       <div><label>创建者</label><div class="sel-host" id="sw-assignee-host"></div></div>
     </div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-swarm-create>创建 Swarm</button>
       <button class="btn" data-close>取消</button>
     </div>`;
@@ -1191,7 +1450,7 @@ function openAssignModal(t) {
   openModal(`
     <h2 style="margin-top:0">改指派</h2>
     <div class="input-row"><label>指派给</label><div class="sel-host" id="a-assignee-host"></div></div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-confirm>确认</button>
       <button class="btn" data-close>取消</button>
     </div>`);
@@ -1219,7 +1478,7 @@ function openModelModal(t) {
     <h2 style="margin-top:0">模型覆盖</h2>
     <div class="input-row"><label>模型</label><input id="m-model" type="text" placeholder="模型名，清空则清除覆盖" value="${esc(t.model_override || "")}"></div>
     <div class="input-row"><label>Provider</label><input id="m-provider" type="text" placeholder="可选" value="${esc(t.provider_override || "")}"></div>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn btn-primary" data-confirm>确认</button>
       <button class="btn" data-close>取消</button>
     </div>`);
@@ -1342,8 +1601,28 @@ function renderEvents() {
 function renderSettings() {
   renderSettingsBoard();
   renderSettingsNotify();
+  renderSettingsMobile();
   renderSettingsMaintain();
   renderSettingsAbout();
+}
+
+function renderSettingsMobile() {
+  const host = el("settings-mobile");
+  host.innerHTML = MOB_SWITCHES.map((s) => `
+    <label class="mob-switch-row" for="mob-${s.key}">
+      <span class="mob-switch-label">
+        <span class="mob-switch-name">${esc(s.label)}</span>
+        <span class="mob-switch-desc">${esc(s.desc)}</span>
+      </span>
+      <span class="switch"><input type="checkbox" id="mob-${s.key}" data-mob="${s.key}"${getMobSwitch(s.key) ? " checked" : ""}><span class="slider"></span></span>
+    </label>`).join("");
+  host.querySelectorAll("[data-mob]").forEach((input) => {
+    input.addEventListener("change", () => {
+      setMobSwitch(input.dataset.mob, input.checked);
+      renderBoard();
+      toast("已更新", "ok", 1200);
+    });
+  });
 }
 
 function activeBoards() {
@@ -1482,7 +1761,7 @@ function confirmAction(message, fn, danger = false) {
   openModal(`
     <h2 style="margin-top:0">确认操作</h2>
     <p style="color:var(--text);word-break:break-word">${esc(message)}</p>
-    <div class="attach-upload">
+    <div class="modal-actions">
       <button class="btn ${danger ? "btn-danger" : "btn-primary"}" data-confirm>确认</button>
       <button class="btn" data-close>取消</button>
     </div>`);
@@ -1589,7 +1868,7 @@ function renderSettingsMaintain() {
 function renderSettingsAbout() {
   const host = el("settings-about");
   host.innerHTML = `
-    <div><b>Hermes Kanban Web</b> · v2（HUD 设计系统）</div>
+    <div><b>Hermes Kanban Web</b> · v3（移动端交互优化 · 4 套主题）</div>
     <div class="kv" style="margin-top:6px">
       <dt>端口</dt><dd><code class="mono">9120</code></dd>
       <dt>数据层</dt><dd>只读 SQLite + <code class="mono">hermes kanban</code> CLI 写操作</dd>
@@ -1616,11 +1895,32 @@ function wireGlobal() {
   el("search").addEventListener("input", (e) => {
     state.search = e.target.value.trim();
     el("list-search").value = state.search;
+    el("search-mobile").value = state.search;
     if (state.view === "list") renderList();
   });
   el("list-search").addEventListener("input", (e) => {
     state.search = e.target.value.trim();
     el("search").value = state.search;
+    el("search-mobile").value = state.search;
+    if (state.view === "list") renderList();
+  });
+  el("search-mobile").addEventListener("input", (e) => {
+    state.search = e.target.value.trim();
+    el("search").value = state.search;
+    el("list-search").value = state.search;
+    if (state.view === "board") switchView("list");
+    else if (state.view === "list") renderList();
+  });
+  el("search-open").addEventListener("click", () => {
+    el("search-drop").classList.remove("hidden");
+    setTimeout(() => { try { el("search-mobile").focus(); } catch (_) { /* noop */ } }, 40);
+  });
+  el("search-cancel").addEventListener("click", () => {
+    el("search-drop").classList.add("hidden");
+    el("search-mobile").value = "";
+    state.search = "";
+    el("search").value = "";
+    el("list-search").value = "";
     if (state.view === "list") renderList();
   });
   el("sort-btn").addEventListener("click", () => {
@@ -1629,7 +1929,29 @@ function wireGlobal() {
   });
   el("list-archived").addEventListener("change", (e) => { state.listArchived = e.target.checked; renderList(); });
 
+  el("board-chips").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-filter]");
+    if (!chip) return;
+    state.boardFilter = chip.dataset.filter;
+    renderBoard();
+  });
+  el("list-chips").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-lfilter]");
+    if (!chip) return;
+    state.listStatus = chip.dataset.lfilter;
+    renderListChips();
+    renderList();
+  });
+
+  let _dotThrottle = null;
+  el("board").addEventListener("scroll", () => {
+    if (_dotThrottle) return;
+    _dotThrottle = setTimeout(() => { _dotThrottle = null; updateBoardDots(); }, 100);
+  });
+
   el("list-tasks").addEventListener("click", (e) => {
+    const menuBtn = e.target.closest("[data-menu]");
+    if (menuBtn) { e.stopPropagation(); showMenuForId(menuBtn.dataset.menu, menuBtn); return; }
     const row = e.target.closest("[data-open]");
     if (row) openDetail(row.dataset.open);
   });
@@ -1672,6 +1994,12 @@ function wireGlobal() {
   });
 
   el("board").addEventListener("click", (e) => {
+    const quickBtn = e.target.closest("[data-quick]");
+    if (quickBtn) {
+      e.stopPropagation();
+      runAction(quickBtn.dataset.quick, "complete");
+      return;
+    }
     const foldBtn = e.target.closest("[data-fold]");
     if (foldBtn) {
       const status = foldBtn.dataset.fold;
@@ -1685,6 +2013,7 @@ function wireGlobal() {
     }
     const card = e.target.closest(".card");
     if (!card) return;
+    if (Date.now() < _suppressClickUntil) return; // 长按触发后的点击抑制
     if (e.target.closest("[data-menu]")) return; // ⋯ 菜单交给全局处理
     openDetail(card.dataset.id);
   });
@@ -1738,8 +2067,8 @@ function stopEventPolling() {
 (function init() {
   try {
     const saved = localStorage.getItem("kb-theme");
-    applyTheme(saved || "hud");
-  } catch (_) { applyTheme("hud"); }
+    applyTheme(saved || "linear");
+  } catch (_) { applyTheme("linear"); }
   renderThemePop();
   wireGlobal();
 
