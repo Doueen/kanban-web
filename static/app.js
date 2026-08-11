@@ -86,11 +86,39 @@ function shortPayload(p) {
   return s.length > 140 ? s.slice(0, 140) + "…" : s;
 }
 
+/* ---------- auth ---------- */
+function getAuth() {
+  try { return JSON.parse(localStorage.getItem("kb-auth") || "null"); } catch (_) { return null; }
+}
+function setAuth(user, pass) {
+  try { localStorage.setItem("kb-auth", JSON.stringify({ u: user, p: pass })); } catch (_) { /* noop */ }
+}
+function clearAuth() {
+  try { localStorage.removeItem("kb-auth"); } catch (_) { /* noop */ }
+}
+function authHeader() {
+  const a = getAuth();
+  return a ? "Basic " + btoa(a.u + ":" + a.p) : "";
+}
+function showLogin() {
+  stopPolling(); stopEventPolling();
+  el("login-screen").classList.remove("hidden");
+  document.body.classList.add("no-app");
+  setTimeout(() => { try { el("login-user").focus(); } catch (_) { /* noop */ } }, 60);
+}
+function hideLogin() {
+  el("login-screen").classList.add("hidden");
+  document.body.classList.remove("no-app");
+}
+
 /* ---------- api ---------- */
 async function api(path, opts = {}) {
+  const h = authHeader();
+  if (h) opts.headers = { ...(opts.headers || {}), Authorization: h };
   const res = await fetch(path, opts);
   let data = null;
   try { data = await res.json(); } catch (_) { /* non-JSON */ }
+  if (res.status === 401) showLogin();
   if (!res.ok) {
     const detail = (data && (data.detail || data.message)) || `HTTP ${res.status}`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
@@ -99,7 +127,9 @@ async function api(path, opts = {}) {
 }
 
 async function apiText(path) {
-  const res = await fetch(path);
+  const h = authHeader();
+  const res = await fetch(path, h ? { headers: { Authorization: h } } : {});
+  if (res.status === 401) showLogin();
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { const d = await res.json(); if (d && d.detail) detail = d.detail; } catch (_) { /* noop */ }
@@ -292,21 +322,37 @@ function cardHtml(t, i) {
   </div>`;
 }
 
+function getCollapsed() {
+  try { return JSON.parse(localStorage.getItem("kb-collapsed") || "{}"); } catch (_) { return {}; }
+}
+function setCollapsed(status, val) {
+  const c = getCollapsed();
+  if (val) c[status] = true; else delete c[status];
+  try { localStorage.setItem("kb-collapsed", JSON.stringify(c)); } catch (_) { /* noop */ }
+}
+
 function renderBoard() {
   const board = el("board");
   if (!state.board) { board.innerHTML = `<div class="empty">加载中…</div>`; return; }
   const first = !board.classList.contains("rendered");
-  board.innerHTML = state.board.statuses.map((col) => `
-    <section class="column st-${esc(col.status)}" data-status="${esc(col.status)}">
+  const collapsed = getCollapsed();
+  const firstVisit = !localStorage.getItem("kb-collapsed"); // 真正首次：归档列默认折叠
+  board.innerHTML = state.board.statuses.map((col) => {
+    const isCollapsed = collapsed[col.status] === true ||
+      (firstVisit && col.status === "archived");
+    return `
+    <section class="column st-${esc(col.status)}${isCollapsed ? " folded" : ""}" data-status="${esc(col.status)}">
       <div class="column-head">
         <span class="dot"></span>
         <span class="column-title">${esc(col.label)}</span>
         <span class="column-count">${col.count}</span>
+        <button class="col-fold" data-fold="${esc(col.status)}" title="${isCollapsed ? "展开" : "折叠"}" aria-label="${isCollapsed ? "展开" : "折叠"}">${isCollapsed ? "▸" : "▾"}</button>
       </div>
       <div class="column-body">
         ${col.tasks.map((t, i) => cardHtml(t, i)).join("") || `<div class="empty" style="padding:18px 4px;font-size:12px;">空</div>`}
       </div>
-    </section>`).join("");
+    </section>`;
+  }).join("");
   if (first) {
     board.classList.add("enter");
     board.classList.add("rendered");
@@ -1549,7 +1595,15 @@ function renderSettingsAbout() {
       <dt>数据层</dt><dd>只读 SQLite + <code class="mono">hermes kanban</code> CLI 写操作</dd>
       <dt>主题</dt><dd>${THEMES.map((t) => esc(t.label)).join(" · ")}</dd>
       <dt>轮询</dt><dd>看板 30s · 事件 5s</dd>
+    </div>
+    <div class="settings-actions" style="margin-top:12px">
+      <button class="btn btn-danger" id="st-logout">退出登录</button>
     </div>`;
+  el("st-logout").addEventListener("click", () => {
+    clearAuth();
+    showLogin();
+    toast("已退出登录", "info");
+  });
 }
 
 /* ---------- events wiring ---------- */
@@ -1618,6 +1672,17 @@ function wireGlobal() {
   });
 
   el("board").addEventListener("click", (e) => {
+    const foldBtn = e.target.closest("[data-fold]");
+    if (foldBtn) {
+      const status = foldBtn.dataset.fold;
+      const col = foldBtn.closest(".column");
+      const isFolded = col.classList.toggle("folded");
+      setCollapsed(status, isFolded);
+      foldBtn.textContent = isFolded ? "▸" : "▾";
+      foldBtn.title = isFolded ? "展开" : "折叠";
+      foldBtn.setAttribute("aria-label", isFolded ? "展开" : "折叠");
+      return;
+    }
     const card = e.target.closest(".card");
     if (!card) return;
     if (e.target.closest("[data-menu]")) return; // ⋯ 菜单交给全局处理
@@ -1677,7 +1742,41 @@ function stopEventPolling() {
   } catch (_) { applyTheme("hud"); }
   renderThemePop();
   wireGlobal();
-  startPolling();
-  refreshBoard();
-  loadBoards();
+
+  el("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const user = el("login-user").value.trim();
+    const pass = el("login-pass").value;
+    const err = el("login-error");
+    const btn = el("login-btn");
+    err.classList.add("hidden");
+    btn.disabled = true; btn.textContent = "验证中…";
+    try {
+      const res = await fetch("/api/board", {
+        headers: { Authorization: "Basic " + btoa(user + ":" + pass) },
+      });
+      if (res.ok) {
+        setAuth(user, pass);
+        hideLogin();
+        startPolling();
+        refreshBoard();
+        loadBoards();
+      } else {
+        err.textContent = "用户名或密码错误";
+        err.classList.remove("hidden");
+      }
+    } catch (_) {
+      err.textContent = "无法连接服务器，请重试";
+      err.classList.remove("hidden");
+    }
+    btn.disabled = false; btn.textContent = "登录";
+  });
+
+  if (getAuth()) {
+    startPolling();
+    refreshBoard();
+    loadBoards();
+  } else {
+    showLogin();
+  }
 })();

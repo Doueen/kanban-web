@@ -30,18 +30,18 @@ if not WEB_PASS:
     print("[kanban-web] KANBAN_WEB_USER=%s KANBAN_WEB_PASS=%s" % (WEB_USER, WEB_PASS), file=sys.stderr)
 
 app = FastAPI(title="Hermes Kanban Web", docs_url=None, redoc_url=None, openapi_url=None)
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 
 def require_auth(creds: HTTPBasicCredentials = Depends(security)) -> str:
+    if creds is None:
+        # 未提供凭据 → 统一 401 无 WWW-Authenticate 头，
+        # 浏览器不弹原生框，由前端自定义登录页接管。
+        raise HTTPException(status_code=401, detail="Unauthorized")
     user_ok = secrets.compare_digest(creds.username, WEB_USER)
     pass_ok = secrets.compare_digest(creds.password, WEB_PASS)
     if not (user_ok and pass_ok):
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        raise HTTPException(status_code=401, detail="Unauthorized")
     return creds.username
 
 

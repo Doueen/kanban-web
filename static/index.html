@@ -11,6 +11,25 @@
 <body data-theme="hud">
   <div class="bg-grid" aria-hidden="true"></div>
 
+  <div id="login-screen" class="login-screen hidden" role="dialog" aria-modal="true" aria-label="登录">
+    <form id="login-form" class="login-card" autocomplete="on">
+      <div class="login-brand">
+        <span class="brand-brackets">⟨</span><span class="brand-name">Hermes Kanban</span><span class="brand-brackets">⟩</span>
+      </div>
+      <div class="login-sub">终端任务看板 · 请登录</div>
+      <div class="login-field">
+        <label for="login-user">用户名</label>
+        <input id="login-user" name="username" type="text" placeholder="用户名" autocomplete="username" required>
+      </div>
+      <div class="login-field">
+        <label for="login-pass">密码</label>
+        <input id="login-pass" name="password" type="password" placeholder="密码" autocomplete="current-password" required>
+      </div>
+      <div id="login-error" class="login-error hidden" role="alert"></div>
+      <button type="submit" class="btn-primary login-btn" id="login-btn">登录</button>
+    </form>
+  </div>
+
   <header id="topbar">
     <div class="brand">
       <span class="brand-brackets">⟨</span><span class="brand-name">Hermes Kanban</span><span class="brand-brackets">⟩</span>
