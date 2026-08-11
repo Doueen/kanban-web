@@ -1617,6 +1617,13 @@ function wireGlobal() {
     el("theme-pop").classList.add("hidden");
   });
 
+  el("board").addEventListener("click", (e) => {
+    const card = e.target.closest(".card");
+    if (!card) return;
+    if (e.target.closest("[data-menu]")) return; // ⋯ 菜单交给全局处理
+    openDetail(card.dataset.id);
+  });
+
   document.addEventListener("click", (e) => {
     if (!el("menu").classList.contains("hidden") && !e.target.closest("#menu") && !e.target.closest("[data-menu]")) {
       closeMenu();

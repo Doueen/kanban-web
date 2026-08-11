@@ -187,21 +187,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @keyframes gridDrift { from { background-position: 0 0, 0 0; } to { background-position: 0 42px, 42px 0; } }
 @keyframes gridDriftB { from { background-position: 0 0; } to { background-position: 0 26px; } }
 
-.scan-beam {
-  position: fixed; left: 0; right: 0; top: 0; height: 2px; z-index: 5;
-  pointer-events: none; opacity: 0;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  filter: drop-shadow(0 0 6px var(--accent));
-  animation: scan 6s linear infinite;
-}
-@keyframes scan {
-  0%   { transform: translateY(-6px); opacity: 0; }
-  6%   { opacity: 0.6; }
-  45%  { opacity: 0.4; }
-  94%  { opacity: 0.3; }
-  100% { transform: translateY(100vh); opacity: 0; }
-}
-
 /* ---------- buttons ---------- */
 .btn {
   position: relative;
@@ -789,5 +774,5 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .bg-grid, .bg-grid::after, .scan-beam { animation: none !important; }
+  .bg-grid, .bg-grid::after { animation: none !important; }
 }
