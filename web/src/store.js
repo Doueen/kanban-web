@@ -425,11 +425,18 @@ export const useAppStore = defineStore("app", {
     async refreshBoard() {
       if (!this.authed) return;
       try {
-        const data = await api("/api/board");
+        const [data, cur] = await Promise.all([
+          api("/api/board"),
+          api("/api/boards/current?force=1"),
+        ]);
         this.board = data;
         this.assignees = data.assignees || [];
         if (this.boardFilter !== "all" && !data.statuses.some((c) => c.status === this.boardFilter)) {
           this.boardFilter = "all";
+        }
+        /* 后台/CLI 切换 board 同步：左上角标题及时更新 */
+        if (!this.currentBoard || cur.slug !== this.currentBoard.slug) {
+          await this.loadBoards();
         }
       } catch (err) {
         if (err.message !== "Unauthorized") console.error("refreshBoard:", err.message);

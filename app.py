@@ -155,8 +155,8 @@ def api_boards():
 
 
 @app.get("/api/boards/current", dependencies=[Depends(require_auth)])
-def api_current_board():
-    slug = db.current_board_slug()
+def api_current_board(force: int = 0):
+    slug = db.current_board_slug(force=bool(force))
     name = None
     try:
         for b in _run_json(kanban_cli.boards_list, include_archived=True):
