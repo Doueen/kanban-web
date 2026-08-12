@@ -19,6 +19,8 @@ import subprocess
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 TIMEOUT = int(os.environ.get("KANBAN_CLI_TIMEOUT", "60"))
 LONG_TIMEOUT = int(os.environ.get("KANBAN_CLI_LONG_TIMEOUT", "300"))
+# dispatch 会真实 spawn worker 进程（每个数秒），放宽到 180s
+DISPATCH_TIMEOUT = int(os.environ.get("KANBAN_CLI_DISPATCH_TIMEOUT", "180"))
 
 
 class CLIError(Exception):
@@ -315,6 +317,16 @@ def gc(event_retention_days=None, log_retention_days=None):
 
 def repair():
     return run_checked(["repair", "--json"])
+
+
+def dispatch(dry_run=False, max_spawn=None):
+    """手动触发一次调度 tick（reclaim 过期任务 / promote 就绪任务 / spawn worker）。"""
+    args = ["dispatch", "--json"]
+    if dry_run:
+        args.append("--dry-run")
+    if max_spawn is not None:
+        args += ["--max", str(max_spawn)]
+    return run_checked(args, timeout=DISPATCH_TIMEOUT)
 
 
 def assignees():

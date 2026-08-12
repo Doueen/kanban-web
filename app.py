@@ -5,11 +5,13 @@ via the `hermes kanban` CLI (see kanban_cli.py). HTTP Basic Auth guards every
 route using KANBAN_WEB_USER / KANBAN_WEB_PASS env vars (default: hermes /
 generated-at-startup, printed to stderr on boot).
 """
+import fcntl
 import json
 import os
 import secrets
 import shutil
 import sys
+import threading
 from pathlib import Path
 
 import yaml
@@ -18,6 +20,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Uploa
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 
 import db
@@ -587,6 +590,77 @@ def api_repair():
 @app.get("/api/assignees", dependencies=[Depends(require_auth)])
 def api_assignees():
     return _run_json(kanban_cli.assignees)
+
+
+# --- scheduler manual trigger ------------------------------------------------
+
+# 进程内互斥：同一 uvicorn 进程内并发触发（重复点击/双击）直接 409
+_SCHED_RUN_LOCK = threading.Lock()
+
+
+def _board_dispatch_lock_busy():
+    """探测当前 board 的调度锁（<db>.dispatch.lock）。
+
+    与 hermes 自身 `_dispatch_tick_lock` 同机制的非阻塞 flock：若 gateway
+    内嵌 dispatcher 或其他进程正在执行 tick，手动 dispatch 会被静默跳过
+    （CLI 输出无标记且退出码为 0），这里提前探测并在响应中如实返回 409。
+    探测失败按 hermes 同款策略降级为不忙（不因探测失败阻塞调度）。
+    """
+    lock_path = db.current_db_path() + ".dispatch.lock"
+    try:
+        with open(lock_path, "a+b") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError):
+                return True
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    return False
+
+
+@app.post("/api/scheduler/run", dependencies=[Depends(require_auth)])
+async def api_scheduler_run(request: Request):
+    """手动触发一次调度（dispatcher tick）：reclaim 过期任务、promote 就绪任务、spawn worker。
+
+    - 并发保护：进程内互斥锁 + board 调度锁探测 → 已有调度运行时返回 409。
+    - CLI 子进程放线程池（run_in_threadpool）：真实 dispatch 可能耗时数十秒，
+      不能阻塞事件循环（否则调度期间整个 API 无响应）。
+    - 响应包含触发结果：spawned 任务 ID 列表与各计数摘要。
+    - 可选 body: {"dry_run": true} 只预览不实际 spawn；{"max": N} 限制本次 spawn 数。
+    """
+    body = await _json_body(request)
+    dry_run = bool(body.get("dry_run")) if isinstance(body, dict) else False
+    max_spawn = body.get("max") if isinstance(body, dict) else None
+    if max_spawn is not None:
+        try:
+            max_spawn = int(max_spawn)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="max must be an integer")
+
+    if not _SCHED_RUN_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="调度已在运行中，请等待完成后再试")
+    try:
+        if _board_dispatch_lock_busy():
+            raise HTTPException(status_code=409, detail="调度器正忙（其他调度 tick 进行中），请稍后重试")
+        try:
+            proc = await run_in_threadpool(kanban_cli.dispatch, dry_run=dry_run, max_spawn=max_spawn)
+        except kanban_cli.CLIError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        try:
+            result = json.loads(proc.stdout or "{}")
+        except ValueError:
+            result = {}
+        task_ids = [s.get("task_id") for s in (result.get("spawned") or []) if s.get("task_id")]
+        return JSONResponse({
+            "status": "triggered",
+            "ok": True,
+            "dry_run": dry_run,
+            "task_ids": task_ids,
+            "result": result,
+        })
+    finally:
+        _SCHED_RUN_LOCK.release()
 
 
 # --- static frontend --------------------------------------------------------
