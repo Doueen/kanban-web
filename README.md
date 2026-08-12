@@ -54,6 +54,33 @@ deploy.sh         # 一键构建部署
 - 写操作语义与 CLI 一致（业务约束如实传递：未运行任务不能发 heartbeat、父依赖未满足时拒绝 promote 等）
 - 多 board：`~/.hermes/kanban/boards/<slug>/kanban.db`，切换走 CLI
 
+## API 契约（任务列表分页）
+
+`GET /api/tasks`（HTTP Basic Auth；SQLite 直读，q 模糊匹配 title/body，默认排除 archived）
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `status` / `assignee` / `q` / `archived` | — | 原有筛选保持不变（`archived=1/true/yes` 包含归档） |
+| `page` | `1` | 页码；非数字或 ≤0 回退默认值 |
+| `page_size` | `20` | 每页条数；非数字或 ≤0 回退默认值，>100 钳制为 100 |
+
+- 排序固定 `priority DESC, created_at DESC`（分页切片稳定，与 CLI `list` 一致）
+- 页码超界返回 `items: []`（不报错），`total` 仍为真实总数
+- 非法 `status` 依旧返回 400（校验保留）
+
+响应信封（**前端须解包 `items`**，不再直接返回数组）：
+
+```json
+GET /api/tasks?page=2&page_size=20  →  200
+{
+  "items": [ /* 第 21–40 条（共 50 条时） */ ],
+  "page": 2,
+  "page_size": 20,
+  "total": 50,
+  "total_pages": 3
+}
+```
+
 ## License
 
 MIT
