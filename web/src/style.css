@@ -236,7 +236,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .brand-brackets { opacity: 0.75; }
 .brand-sep { color: var(--muted); margin: 0 7px; }
-.brand-board { color: var(--warn); font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; white-space: nowrap; }
+.brand-board { color: var(--warn); font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; white-space: nowrap; cursor: pointer; border-radius: 8px; padding: 4px 8px; margin: -4px -8px; transition: background 0.15s; }
+.brand-board:hover { background: var(--accent-dim); }
+.brand-board:active { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .brand-short { display: none; }
 
 .top-nav { display: none; gap: 4px; }

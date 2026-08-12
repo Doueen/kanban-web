@@ -410,6 +410,11 @@ export const useAppStore = defineStore("app", {
         this.currentBoard = null;
       }
     },
+    async switchBoard(slug) {
+      await api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {}));
+      await this.loadBoards();
+      await this.refreshBoard();
+    },
     findTask(id) {
       if (!this.board) return null;
       for (const col of this.board.statuses) {

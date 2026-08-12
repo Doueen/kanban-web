@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { showToast } from "vant";
 import { useAppStore, STATUS_ORDER, STATUS, vantThemeVars } from "./store";
-import { setOnUnauthorized } from "./api";
+import { api, jsonOpts, setOnUnauthorized } from "./api";
 
 import LoginScreen from "./components/LoginScreen.vue";
 import ThemeSwitcher from "./components/ThemeSwitcher.vue";
@@ -27,6 +28,40 @@ const NAVS = [
 
 const isMobile = computed(() => store.isMobile);
 const searchDrop = ref(false);
+
+/* ---------- 顶栏 board 快速切换 ---------- */
+const boardSheet = ref(false);
+const boardActions = ref([]);
+const boardSwitching = ref(false);
+
+async function openBoardSwitch() {
+  try {
+    await store.loadBoards();
+  } catch (_) { /* toast below */ }
+  const cur = store.currentBoard ? store.currentBoard.slug : "";
+  boardActions.value = store.boards.map((b) => ({
+    name: b.slug === cur ? `${b.name || b.slug}（当前）` : b.name || b.slug,
+    slug: b.slug,
+    disabled: b.slug === cur,
+  }));
+  if (!boardActions.value.length) {
+    showToast({ message: "暂无其他看板", type: "fail" });
+    return;
+  }
+  boardSheet.value = true;
+}
+async function onBoardSelect(item) {
+  if (item.disabled || boardSwitching.value) return;
+  boardSwitching.value = true;
+  try {
+    await store.switchBoard(item.slug);
+    showToast({ message: `已切换到「${item.name}」`, type: "success" });
+  } catch (err) {
+    showToast({ message: "切换失败: " + err.message, type: "fail" });
+  } finally {
+    boardSwitching.value = false;
+  }
+}
 
 /* ---------- 长按 FAB（P2#14）：400ms → 9 状态「新建到此列」 ---------- */
 const fabSheet = ref(false);
@@ -128,7 +163,15 @@ onUnmounted(() => {
         <span class="brand-short">Kanban</span>
         <span class="brand-brackets">⟩</span>
         <span class="brand-sep">·</span>
-        <span class="brand-board">{{ store.currentBoard ? store.currentBoard.name : "…" }}</span>
+        <span
+          class="brand-board"
+          role="button"
+          tabindex="0"
+          title="点击切换看板"
+          aria-label="切换看板"
+          @click.stop="openBoardSwitch"
+          @keydown.enter.stop="openBoardSwitch"
+        >{{ store.currentBoard ? store.currentBoard.name : "…" }} ▾</span>
       </div>
 
       <nav class="top-nav" aria-label="主导航">
@@ -192,6 +235,15 @@ onUnmounted(() => {
       :actions="FAB_ACTIONS"
       close-on-click-action
       @select="onFabAction"
+    />
+
+    <van-action-sheet
+      v-model:show="boardSheet"
+      title="切换看板"
+      :actions="boardActions"
+      :loading="boardSwitching"
+      close-on-click-action
+      @select="onBoardSelect"
     />
 
     <TaskDetail />
