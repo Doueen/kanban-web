@@ -7,9 +7,9 @@ const store = useAppStore();
 const refreshing = ref(false);
 const showAssignee = ref(false);
 
-const assigneeCols = computed(() => [
-  { text: "全部指派", value: "" },
-  ...store.assignees.map((a) => ({ text: a.name, value: a.name })),
+const assigneeActions = computed(() => [
+  { name: "全部指派", value: "" },
+  ...store.assignees.map((a) => ({ name: a.name, value: a.name })),
 ]);
 
 const listChips = computed(() => [
@@ -108,14 +108,14 @@ function openMenu(t, e) {
         </div>
       </div>
 
-      <van-popup v-model:show="showAssignee" position="bottom" round>
-        <van-picker
-          :columns="assigneeCols"
-          title="选择指派"
-          @confirm="(v) => { const t = v.selectedOptions[0]?.text; store.listAssignee = t === '全部指派' ? '' : t; }"
-          @cancel="showAssignee = false"
-        />
-      </van-popup>
+      <van-action-sheet
+        v-model:show="showAssignee"
+        :actions="assigneeActions"
+        title="选择指派"
+        cancel-text="取消"
+        close-on-click-action
+        @select="(a) => (store.listAssignee = a.value)"
+      />
     </van-pull-refresh>
   </section>
 </template>

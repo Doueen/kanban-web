@@ -10,7 +10,7 @@ const store = useAppStore();
 /* ---------- Board 管理 ---------- */
 const boards = computed(() => (store.boards || []).filter((b) => !b.archived));
 const cur = computed(() => store.currentBoard);
-const boardOpts = computed(() => boards.value.map((b) => ({ text: b.slug + (b.is_current ? " ●" : ""), value: b.slug })));
+const boardOpts = computed(() => boards.value.map((b) => ({ name: b.slug + (b.is_current ? " ●（当前）" : ""), value: b.slug })));
 
 const switchSel = ref("");
 const renameSel = ref("");
@@ -98,10 +98,29 @@ async function doDelete() {
 const notifyTask = ref("");
 const notifySubs = ref(null);
 const notifyLoading = ref(false);
+const showNotifyPicker = ref(false);
+
+/* 任务选择器（全部任务，非归档在前） */
+const notifyTaskActions = computed(() => {
+  if (!store.board) return [];
+  const tasks = [
+    ...store.board.statuses.filter((c) => c.status !== "archived").flatMap((c) => c.tasks),
+    ...store.board.statuses.filter((c) => c.status === "archived").flatMap((c) => c.tasks),
+  ];
+  return tasks.map((t) => ({
+    name: `${t.title.slice(0, 24)}${t.title.length > 24 ? "…" : ""}（${t.id}）`,
+    value: t.id,
+  }));
+});
+
+function onNotifyTaskSelect(a) {
+  notifyTask.value = a.value;
+  loadNotifySubs();
+}
 
 async function loadNotifySubs() {
   const tid = notifyTask.value.trim();
-  if (!tid) { showToast({ message: "请输入任务 ID", type: "fail" }); return; }
+  if (!tid) { showToast({ message: "请输入或选择任务", type: "fail" }); return; }
   notifyLoading.value = true;
   notifySubs.value = null;
   try {
@@ -281,6 +300,7 @@ function logout() {
       <div class="settings-block">
         <div class="settings-actions">
           <van-field v-model="notifyTask" placeholder="任务 ID (t_xxxx)" style="flex: 1; max-width: 280px" />
+          <van-button @click="showNotifyPicker = true">选择任务</van-button>
           <van-button type="primary" :loading="notifyLoading" @click="loadNotifySubs">查看</van-button>
         </div>
         <div v-if="notifySubs" style="margin-top: 8px">
@@ -347,39 +367,48 @@ function logout() {
       </div>
     </div>
 
-    <!-- pickers -->
-    <van-popup v-model:show="showSwitchPicker" position="bottom" round>
-      <van-picker
-        :columns="boardOpts"
-        title="选择 board"
-        @confirm="(v) => (switchSel = v.selectedOptions[0]?.value || '')"
-        @cancel="showSwitchPicker = false"
-      />
-    </van-popup>
-    <van-popup v-model:show="showRenamePicker" position="bottom" round>
-      <van-picker
-        :columns="boardOpts"
-        title="选择 board"
-        @confirm="(v) => (renameSel = v.selectedOptions[0]?.value || '')"
-        @cancel="showRenamePicker = false"
-      />
-    </van-popup>
-    <van-popup v-model:show="showWorkdirPicker" position="bottom" round>
-      <van-picker
-        :columns="boardOpts"
-        title="选择 board"
-        @confirm="(v) => (workdirSel = v.selectedOptions[0]?.value || '')"
-        @cancel="showWorkdirPicker = false"
-      />
-    </van-popup>
-    <van-popup v-model:show="showRmPicker" position="bottom" round>
-      <van-picker
-        :columns="boardOpts"
-        title="选择 board"
-        @confirm="(v) => (rmSel = v.selectedOptions[0]?.value || '')"
-        @cancel="showRmPicker = false"
-      />
-    </van-popup>
+    <!-- pickers（action-sheet 直选） -->
+    <van-action-sheet
+      v-model:show="showSwitchPicker"
+      :actions="boardOpts"
+      title="选择 board"
+      cancel-text="取消"
+      close-on-click-action
+      @select="(a) => (switchSel = a.value)"
+    />
+    <van-action-sheet
+      v-model:show="showRenamePicker"
+      :actions="boardOpts"
+      title="选择 board"
+      cancel-text="取消"
+      close-on-click-action
+      @select="(a) => (renameSel = a.value)"
+    />
+    <van-action-sheet
+      v-model:show="showWorkdirPicker"
+      :actions="boardOpts"
+      title="选择 board"
+      cancel-text="取消"
+      close-on-click-action
+      @select="(a) => (workdirSel = a.value)"
+    />
+    <van-action-sheet
+      v-model:show="showRmPicker"
+      :actions="boardOpts"
+      title="选择 board"
+      cancel-text="取消"
+      close-on-click-action
+      @select="(a) => (rmSel = a.value)"
+    />
+
+    <van-action-sheet
+      v-model:show="showNotifyPicker"
+      :actions="notifyTaskActions"
+      title="选择任务（通知订阅）"
+      cancel-text="取消"
+      close-on-click-action
+      @select="onNotifyTaskSelect"
+    />
 
     <!-- GC 弹窗 -->
     <van-dialog v-model:show="gcShow" title="运行 GC" show-cancel-button :before-close="runGc" close-on-click-overlay>
