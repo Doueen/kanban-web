@@ -15,3 +15,10 @@ app.config.errorHandler = (err, _instance, info) => {
 app.use(createPinia());
 app.use(Vant);
 app.mount("#app");
+
+/* PWA：注册 service worker（仅生产/非 localhost 调试时） */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}

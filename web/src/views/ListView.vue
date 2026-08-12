@@ -1,11 +1,51 @@
 <script setup>
 import { computed, ref } from "vue";
+import { showConfirmDialog, showToast } from "vant";
 import { useAppStore, STATUS, STATUS_CSS } from "../store";
+import { api, jsonOpts } from "../api";
 import { ago, fmtTime } from "../utils";
 
 const store = useAppStore();
 const refreshing = ref(false);
 const showAssignee = ref(false);
+
+/* ---------- 批量操作 ---------- */
+const batchMode = ref(false);
+const selected = ref(new Set());
+
+function toggleBatch() {
+  batchMode.value = !batchMode.value;
+  selected.value = new Set();
+}
+function toggleSelect(id) {
+  const s = new Set(selected.value);
+  if (s.has(id)) s.delete(id);
+  else s.add(id);
+  selected.value = s;
+}
+async function batchAction(action, label) {
+  const ids = Array.from(selected.value);
+  if (!ids.length) { showToast({ message: "请先选择任务", type: "fail" }); return; }
+  try {
+    await showConfirmDialog({
+      title: `批量${label}`,
+      message: `对 ${ids.length} 个任务执行「${label}」？`,
+      confirmButtonText: label,
+    });
+  } catch (_) { return; }
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try {
+      await api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action }));
+      ok++;
+    } catch (_) { fail++; }
+  }
+  showToast({ message: `${label}完成 ${ok} 个${fail ? "，失败 " + fail : ""}`, type: fail ? "fail" : "success" });
+  batchMode.value = false;
+  selected.value = new Set();
+  await store.refreshBoard();
+}
+const batchCount = computed(() => selected.value.size);
 
 const assigneeActions = computed(() => [
   { name: "全部指派", value: "" },
@@ -65,6 +105,13 @@ function openMenu(t, e) {
       </div>
 
       <div class="list-toolbar">
+        <van-button
+          icon="checked"
+          size="small"
+          style="flex: 0 0 auto"
+          :type="batchMode ? 'primary' : 'default'"
+          @click="toggleBatch"
+        >{{ batchMode ? "退出批量" : "批量" }}</van-button>
         <van-field
           class="list-assignee"
           :model-value="store.listAssignee || '全部指派'"
@@ -83,6 +130,14 @@ function openMenu(t, e) {
         </label>
       </div>
 
+      <!-- 批量操作条 -->
+      <div v-if="batchMode" class="batch-bar">
+        <span class="batch-count">已选 {{ batchCount }} 个</span>
+        <van-button size="small" type="primary" :disabled="!batchCount" @click="batchAction('complete', '完成')">完成</van-button>
+        <van-button size="small" :disabled="!batchCount" @click="batchAction('archive', '归档')">归档</van-button>
+        <van-button size="small" :disabled="!batchCount" @click="batchAction('block', '阻塞')">阻塞</van-button>
+      </div>
+
       <div class="list-sort-note">{{ store.sortBy === "priority" ? "按优先级排序" : "按创建时间排序" }}</div>
 
       <div>
@@ -91,9 +146,15 @@ function openMenu(t, e) {
           v-for="t in filtered"
           :key="t.id"
           class="list-row"
-          :class="'st-' + t.status"
-          @click="store.openDetail(t.id)"
+          :class="['st-' + t.status, { 'batch-selected': batchMode && selected.has(t.id) }]"
+          @click="batchMode ? toggleSelect(t.id) : store.openDetail(t.id)"
         >
+          <van-checkbox
+            v-if="batchMode"
+            :model-value="selected.has(t.id)"
+            class="batch-check"
+            @click.stop="toggleSelect(t.id)"
+          />
           <div class="list-row-main">
             <div class="list-row-title">{{ t.title }}</div>
             <div class="list-row-meta">
@@ -104,7 +165,7 @@ function openMenu(t, e) {
               <span :title="fmtTime(t.created_at)">创建于 {{ ago(t.created_at) }}</span>
             </div>
           </div>
-          <button class="menu-btn list-menu-btn" aria-label="操作菜单" @click="openMenu(t, $event)">⋯</button>
+          <button v-if="!batchMode" class="menu-btn list-menu-btn" aria-label="操作菜单" @click="openMenu(t, $event)">⋯</button>
         </div>
       </div>
 

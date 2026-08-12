@@ -29,6 +29,36 @@ const byAssignee = computed(() => stats.value?.by_assignee || {});
 const total = computed(() => STATUS_ORDER.reduce((a, s) => a + (byStatus.value[s] || 0), 0) || 1);
 const oldest = computed(() => stats.value?.oldest_ready_age_seconds);
 
+/* ---------- 7 天完成趋势（事件流统计） ---------- */
+const trendEvents = ref([]);
+async function loadTrend() {
+  try {
+    const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+    trendEvents.value = await api(`/api/events?since=${since}&limit=500`);
+  } catch (_) {
+    trendEvents.value = [];
+  }
+}
+const trend = computed(() => {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push({ key: d.toISOString().slice(0, 10), label: `${d.getMonth() + 1}/${d.getDate()}`, count: 0 });
+  }
+  for (const e of trendEvents.value) {
+    if (e.kind === "status" && e.payload && e.payload.status === "done") {
+      const d = new Date((e.created_at || 0) * 1000);
+      const key = d.toISOString().slice(0, 10);
+      const hit = days.find((x) => x.key === key);
+      if (hit) hit.count++;
+    }
+  }
+  return days;
+});
+const trendMax = computed(() => Math.max(1, ...trend.value.map((d) => d.count)));
+const trendTotal = computed(() => trend.value.reduce((a, d) => a + d.count, 0));
+
 const assigneeRows = computed(() =>
   Object.entries(byAssignee.value)
     .map(([name, counts]) => ({ name, total: Object.values(counts).reduce((a, b) => a + b, 0) }))
@@ -42,6 +72,7 @@ function pct(n) {
 
 onMounted(() => {
   loadStats();
+  loadTrend();
 });
 </script>
 
@@ -49,6 +80,23 @@ onMounted(() => {
   <section class="view" aria-label="统计">
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
       <div class="stats-grid">
+        <!-- 7 天完成趋势 -->
+        <div class="panel">
+          <div class="panel-head"><h3>7 天完成趋势</h3><span class="panel-note num">近 7 天完成 {{ trendTotal }} 个</span></div>
+          <div class="trend-chart">
+            <div v-for="d in trend" :key="d.key" class="trend-col">
+              <span class="trend-val num">{{ d.count || "" }}</span>
+              <div class="trend-bar-wrap">
+                <div
+                  class="trend-bar"
+                  :style="{ height: d.count ? Math.max(8, (d.count / trendMax) * 100) + '%' : '3px', opacity: d.count ? 1 : 0.25 }"
+                ></div>
+              </div>
+              <span class="trend-label num">{{ d.label }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- 状态分布 -->
         <div class="panel">
           <div class="panel-head"><h3>状态分布</h3><span class="panel-note num">共 {{ total }} 个</span></div>

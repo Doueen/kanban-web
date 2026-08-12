@@ -9,6 +9,7 @@ const store = useAppStore();
 
 /* ---------- Board 管理 ---------- */
 const boards = computed(() => (store.boards || []).filter((b) => !b.archived));
+const archivedBoards = computed(() => (store.boards || []).filter((b) => b.archived));
 const cur = computed(() => store.currentBoard);
 const boardOpts = computed(() => boards.value.map((b) => ({ name: b.slug + (b.is_current ? " ●（当前）" : ""), value: b.slug })));
 
@@ -114,6 +115,9 @@ async function doArchive(slug) {
 async function doDelete(slug) {
   await boardOp("删除", () => api(`/api/boards/${encodeURIComponent(slug)}`, jsonOpts("DELETE", { delete: true })));
 }
+async function doRestore(slug) {
+  await boardOp("恢复", () => api(`/api/boards/${encodeURIComponent(slug)}/restore`, jsonOpts("POST", {})));
+}
 
 /* ---------- 通知订阅管理 ---------- */
 const notifyTask = ref("");
@@ -214,6 +218,22 @@ function onMobChange(key, val) {
   showToast({ message: "已更新", duration: 1200 });
 }
 
+/* ---------- 外观：跟随系统深色 ---------- */
+const sysDarkOn = ref(false);
+try { sysDarkOn.value = localStorage.getItem("kb-sys-dark") === "1"; } catch (_) { /* */ }
+
+function onSysDark(val) {
+  sysDarkOn.value = val;
+  try { localStorage.setItem("kb-sys-dark", val ? "1" : "0"); } catch (_) { /* */ }
+  if (val) {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    store.applyTheme(mq.matches ? "linear" : "bright", true);
+  } else {
+    store.applyTheme(store.theme);
+  }
+  showToast({ message: val ? "已开启跟随系统" : "已关闭跟随系统", duration: 1200 });
+}
+
 function logout() {
   showToast({ message: "已退出登录", type: "info", duration: 800 });
   setTimeout(() => store.logout(), 400);
@@ -238,7 +258,7 @@ function logout() {
             <span class="board-item-dot" :style="{ background: b.color || 'var(--accent)' }"></span>
             <div class="board-item-main">
               <div class="board-item-name">
-                {{ b.name || b.slug }}
+                {{ b.icon ? b.icon + " " : "" }}{{ b.name || b.slug }}
                 <span v-if="b.slug === cur?.slug" class="board-item-badge">当前</span>
               </div>
               <div class="board-item-sub">
@@ -256,6 +276,24 @@ function logout() {
           </div>
         </div>
         <div v-else class="empty" style="padding: 12px">暂无 board</div>
+
+        <template v-if="archivedBoards.length">
+          <h4>已归档（可恢复）</h4>
+          <div class="board-list">
+            <div
+              v-for="b in archivedBoards"
+              :key="b.slug"
+              class="board-item archived"
+            >
+              <span class="board-item-dot" :style="{ background: b.color || 'var(--muted)' }"></span>
+              <div class="board-item-main">
+                <div class="board-item-name">{{ b.icon ? b.icon + " " : "" }}{{ b.name || b.slug }}</div>
+                <div class="board-item-sub"><code class="mono">{{ b.slug }}</code></div>
+              </div>
+              <button class="board-item-switch" @click="doRestore(b.slug)">恢复</button>
+            </div>
+          </div>
+        </template>
       </div>
 
       <div class="settings-block">
@@ -293,6 +331,17 @@ function logout() {
           <div v-else class="empty" style="padding: 12px">该任务无订阅</div>
         </div>
       </div>
+    </div>
+
+    <!-- 外观 -->
+    <div class="panel settings-panel">
+      <div class="panel-head"><h3>外观</h3></div>
+      <SettingSwitch
+        label="跟随系统深色模式"
+        desc="系统深色时自动用线性精修，浅色时用明亮现代（手动选主题后自动关闭）"
+        :model-value="sysDarkOn"
+        @update:model-value="onSysDark"
+      />
     </div>
 
     <!-- 移动端看板 -->

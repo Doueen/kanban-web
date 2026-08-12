@@ -8,6 +8,7 @@ generated-at-startup, printed to stderr on boot).
 import json
 import os
 import secrets
+import shutil
 import sys
 from pathlib import Path
 
@@ -181,10 +182,29 @@ async def api_create_board(request: Request):
 
 
 @app.post("/api/boards/{slug}/switch", dependencies=[Depends(require_auth)])
-def api_switch_board(slug: str):
+def api_board_switch(slug: str):
     res = _run_write(kanban_cli.boards_switch, slug)
     db.refresh_current_board()
     return res
+
+
+@app.post("/api/boards/{slug}/restore", dependencies=[Depends(require_auth)])
+def api_board_restore(slug: str):
+    """恢复已归档 board（归档 = 目录移入 _archived，恢复 = 移回）。"""
+    boards_dir = Path.home() / ".hermes" / "kanban" / "boards"
+    arch_dir = boards_dir / "_archived"
+    if not arch_dir.is_dir():
+        raise HTTPException(404, "未找到归档的 board")
+    cands = sorted(arch_dir.glob(f"{slug}-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not cands:
+        raise HTTPException(404, "未找到归档的 board")
+    src = cands[0]
+    dst = boards_dir / slug
+    if dst.exists():
+        dst = boards_dir / f"{slug}-restored"
+    shutil.move(str(src), str(dst))
+    db.refresh_current_board()
+    return {"ok": True, "message": f"已恢复 board「{slug}」"}
 
 
 @app.post("/api/boards/{slug}/rename", dependencies=[Depends(require_auth)])

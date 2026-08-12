@@ -194,7 +194,7 @@ onUnmounted(() => {
           @update:model-value="onSearch"
         />
         <ThemeSwitcher />
-        <button class="icon-btn" title="刷新" aria-label="刷新" @click="doRefresh">⟳</button>
+        <button v-if="!isMobile" class="icon-btn" title="刷新" aria-label="刷新" @click="doRefresh">⟳</button>
       </div>
 
       <div v-if="searchDrop" class="search-drop">

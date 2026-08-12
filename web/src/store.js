@@ -317,13 +317,29 @@ export const useAppStore = defineStore("app", {
     initTheme() {
       let saved = "linear";
       try { saved = localStorage.getItem("kb-theme") || "linear"; } catch (_) { /* */ }
-      this.applyTheme(saved);
+      this.applyTheme(saved, true);
+      this.initSysDark();
     },
-    applyTheme(id) {
+    /* 跟随系统深色模式（设置开关 kb-sys-dark） */
+    initSysDark() {
+      let on = false;
+      try { on = localStorage.getItem("kb-sys-dark") === "1"; } catch (_) { /* */ }
+      if (!on) return;
+      const mq = matchMedia("(prefers-color-scheme: dark)");
+      const apply = () => this.applyTheme(mq.matches ? "linear" : "bright", true);
+      apply();
+      mq.addEventListener?.("change", apply);
+    },
+    applyTheme(id, skipPersist) {
       const t = THEMES.find((x) => x.id === id) || THEMES[0];
       this.theme = t.id;
       document.body.dataset.theme = t.id;
-      try { localStorage.setItem("kb-theme", t.id); } catch (_) { /* */ }
+      if (!skipPersist) {
+        try {
+          localStorage.setItem("kb-theme", t.id);
+          localStorage.setItem("kb-sys-dark", "0"); // 手动选择后关闭跟随
+        } catch (_) { /* */ }
+      }
       applyVantVars(t);
     },
 
