@@ -208,6 +208,26 @@ async function loadLog(id, tail) {
 }
 
 /* ---------- 通知订阅 ---------- */
+const platformSheet = ref(false);
+const platformActions = ref([]);
+
+async function loadPlatforms() {
+  try {
+    const list = await api("/api/platforms");
+    platformActions.value = list.map((p) => ({
+      name: p.name + (p.chat_id ? `（${p.chat_id.slice(0, 14)}…）` : ""),
+      value: p,
+    }));
+  } catch (_) {
+    platformActions.value = [];
+  }
+}
+function onPlatformSelect(a) {
+  const p = a.value;
+  notifyForm.value.platform = p.platform;
+  notifyForm.value.chat_id = p.chat_id || "";
+  notifyForm.value.thread_id = p.thread_id || "";
+}
 async function loadNotify() {
   const t = detail.value && detail.value.task;
   if (!t) return;
@@ -221,7 +241,7 @@ async function addNotify() {
   const t = detail.value.task;
   const platform = notifyForm.value.platform.trim();
   const chat = notifyForm.value.chat_id.trim();
-  if (!platform || !chat) { showToast({ message: "platform 和 chat-id 必填", type: "fail" }); return; }
+  if (!platform || !chat) { showToast({ message: "请选择消息平台", type: "fail" }); return; }
   try {
     const res = await api(`/api/tasks/${encodeURIComponent(t.id)}/notify`, jsonOpts("POST", {
       platform,
@@ -397,11 +417,21 @@ function onTouchEnd() {
         </div>
         <div v-else class="empty" style="padding: 8px; font-size: 12px">无订阅</div>
         <div class="attach-upload">
-          <input v-model="notifyForm.platform" placeholder="platform" style="max-width: 130px">
-          <input v-model="notifyForm.chat_id" placeholder="chat-id" style="max-width: 150px">
-          <input v-model="notifyForm.thread_id" placeholder="thread-id(可选)" style="max-width: 120px">
+          <button class="platform-pick" @click="platformSheet = true; loadPlatforms()">
+            {{ notifyForm.platform ? notifyForm.platform : "选择平台 ▾" }}
+          </button>
+          <input v-model="notifyForm.chat_id" placeholder="chat-id（自动填充）" style="flex: 1; min-width: 120px">
+          <input v-model="notifyForm.thread_id" placeholder="thread-id(可选)" style="max-width: 110px">
           <van-button size="small" type="primary" @click="addNotify">订阅</van-button>
         </div>
+        <van-action-sheet
+          v-model:show="platformSheet"
+          :actions="platformActions"
+          title="选择已绑定的消息平台"
+          cancel-text="取消"
+          close-on-click-action
+          @select="onPlatformSelect"
+        />
       </div>
 
       <!-- 依赖 -->

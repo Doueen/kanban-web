@@ -12,6 +12,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import yaml
+
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -429,6 +431,32 @@ def api_context(task_id: str):
 @app.get("/api/tasks/{task_id}/log", dependencies=[Depends(require_auth)])
 def api_log(task_id: str, tail: int = None):
     return _run_text(kanban_cli.log, task_id, tail)
+
+
+@app.get("/api/platforms", dependencies=[Depends(require_auth)])
+def api_platforms():
+    """读取 Hermes 已绑定的消息平台（config.yaml platforms 段 enabled: true）。"""
+    try:
+        cfg_path = Path.home() / ".hermes" / "config.yaml"
+        if not cfg_path.is_file():
+            return []
+        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        platforms = data.get("platforms") or {}
+        out = []
+        for name, conf in platforms.items():
+            if not isinstance(conf, dict) or not conf.get("enabled"):
+                continue
+            home = conf.get("home_channel") or {}
+            out.append({
+                "platform": name,
+                "name": conf.get("label") or name,
+                "chat_id": home.get("chat_id") or "",
+                "thread_id": home.get("thread_id") or "",
+                "user_id": home.get("user_id") or "",
+            })
+        return out
+    except Exception:
+        return []
 
 
 @app.get("/api/tasks/{task_id}/notify", dependencies=[Depends(require_auth)])

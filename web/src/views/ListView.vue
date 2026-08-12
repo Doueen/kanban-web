@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { useAppStore, STATUS, STATUS_CSS } from "../store";
+import { useAppStore, STATUS, STATUS_CSS, STATUS_ORDER } from "../store";
 import { api, jsonOpts } from "../api";
 import { ago, fmtTime } from "../utils";
 
@@ -68,7 +68,14 @@ const filtered = computed(() => {
   const q = store.search.trim().toLowerCase();
   if (q) tasks = tasks.filter((t) => (t.title + " " + (t.body || "")).toLowerCase().includes(q));
   if (!store.listArchived) tasks = tasks.filter((t) => t.status !== "archived");
-  if (store.sortBy === "priority") {
+  if (store.sortBy === "status") {
+    tasks = [...tasks].sort(
+      (a, b) =>
+        (STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)) ||
+        (b.priority || 0) - (a.priority || 0) ||
+        (b.created_at || 0) - (a.created_at || 0)
+    );
+  } else if (store.sortBy === "priority") {
     tasks = [...tasks].sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.created_at || 0) - (a.created_at || 0));
   } else {
     tasks = [...tasks].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -82,7 +89,7 @@ async function onRefresh() {
 }
 
 function toggleSort() {
-  store.sortBy = store.sortBy === "created" ? "priority" : "created";
+  store.sortBy = store.sortBy === "status" ? "priority" : store.sortBy === "priority" ? "created" : "status";
 }
 
 function openMenu(t, e) {
@@ -126,7 +133,7 @@ function openMenu(t, e) {
         />
         <van-search v-model="store.search" placeholder="搜索…" shape="round" />
         <van-button icon="exchange" size="small" style="flex: 0 0 auto" @click="toggleSort">
-          {{ store.sortBy === "priority" ? "优先级" : "创建时间" }}
+          {{ store.sortBy === "status" ? "状态" : store.sortBy === "priority" ? "优先级" : "创建时间" }}
         </van-button>
         <label class="check-label">
           <van-switch v-model="store.listArchived" size="18px" />
@@ -142,7 +149,7 @@ function openMenu(t, e) {
         <van-button size="small" :disabled="!batchCount" @click="batchAction('block', '阻塞')">阻塞</van-button>
       </div>
 
-      <div class="list-sort-note">{{ store.sortBy === "priority" ? "按优先级排序" : "按创建时间排序" }}</div>
+      <div class="list-sort-note">{{ store.sortBy === "status" ? "按任务状态排序（默认）" : store.sortBy === "priority" ? "按优先级排序" : "按创建时间排序" }}</div>
 
       <div>
         <van-empty v-if="!filtered.length" description="没有匹配的任务" />

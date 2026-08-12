@@ -270,7 +270,7 @@ export const useAppStore = defineStore("app", {
     listStatus: "",
     listAssignee: "",
     listArchived: false,
-    sortBy: "created",
+    sortBy: "status",
     detailId: null,
     detailOpts: {},
     events: [],
@@ -439,7 +439,7 @@ export const useAppStore = defineStore("app", {
         this.boards = await api("/api/boards");
         const cur = await api("/api/boards/current");
         const b = this.boards.find((x) => x.slug === cur.slug);
-        this.currentBoard = { slug: cur.slug, name: (b && b.name) || cur.name || cur.slug };
+        this.currentBoard = { slug: cur.slug, name: (b && b.name) || cur.name || cur.slug, default_workdir: b ? b.default_workdir : undefined };
       } catch (err) {
         this.currentBoard = null;
       }

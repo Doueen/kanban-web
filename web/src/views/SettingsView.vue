@@ -420,40 +420,29 @@ function logout() {
       </div>
     </div>
 
-    <!-- pickers（action-sheet 直选） -->
+    <!-- board ⋯ 管理菜单 -->
     <van-action-sheet
-      v-model:show="showSwitchPicker"
-      :actions="boardOpts"
-      title="选择 board"
+      v-model:show="boardMenuShow"
+      :actions="boardMenuActions"
+      title="管理 board"
       cancel-text="取消"
       close-on-click-action
-      @select="(a) => (switchSel = a.value)"
-    />
-    <van-action-sheet
-      v-model:show="showRenamePicker"
-      :actions="boardOpts"
-      title="选择 board"
-      cancel-text="取消"
-      close-on-click-action
-      @select="(a) => (renameSel = a.value)"
-    />
-    <van-action-sheet
-      v-model:show="showWorkdirPicker"
-      :actions="boardOpts"
-      title="选择 board"
-      cancel-text="取消"
-      close-on-click-action
-      @select="(a) => (workdirSel = a.value)"
-    />
-    <van-action-sheet
-      v-model:show="showRmPicker"
-      :actions="boardOpts"
-      title="选择 board"
-      cancel-text="取消"
-      close-on-click-action
-      @select="(a) => (rmSel = a.value)"
+      @select="onBoardMenuSelect"
     />
 
+    <!-- 重命名 / 工作目录对话框 -->
+    <van-dialog v-model:show="renameShow" title="重命名 board" show-cancel-button :before-close="(a) => { if (a === 'confirm') confirmRename(); return true; }">
+      <div style="padding: 8px 16px 16px">
+        <van-field v-model="renameInput" label="名称" placeholder="新名称" />
+      </div>
+    </van-dialog>
+    <van-dialog v-model:show="workdirShow" title="设置工作目录" show-cancel-button :before-close="(a) => { if (a === 'confirm') confirmWorkdir(); return true; }">
+      <div style="padding: 8px 16px 16px">
+        <van-field v-model="workdirInput" label="路径" placeholder="/abs/path（留空清除）" />
+      </div>
+    </van-dialog>
+
+    <!-- 通知订阅任务选择 -->
     <van-action-sheet
       v-model:show="showNotifyPicker"
       :actions="notifyTaskActions"

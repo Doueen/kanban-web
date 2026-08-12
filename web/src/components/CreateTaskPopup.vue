@@ -21,7 +21,7 @@ const form = reactive({
   body: "",
   assignee: "",
   priority: 0,
-  workspace: "scratch",
+  workspace: "",
   parent: "",
   triage: false,
 });
@@ -40,6 +40,12 @@ const PRIORITY_ACTIONS = [
   { name: "P3 最高", value: 3 },
 ];
 const WORKSPACE_ACTIONS = ["scratch", "worktree", "dir"].map((t) => ({ name: t, value: t }));
+/* 工作区选择：优先提供「当前 board 工作目录」选项 */
+const workspaceActions = computed(() => {
+  const wd = store.currentBoard?.default_workdir;
+  if (!wd) return WORKSPACE_ACTIONS;
+  return [{ name: `当前工作目录（${wd}）`, value: "dir:" + wd }, ...WORKSPACE_ACTIONS];
+});
 const assigneeActions = computed(() => [
   { name: "未指派", value: "" },
   ...store.assignees.map((a) => ({ name: a.name, value: a.name })),
@@ -148,7 +154,7 @@ async function submitNormal() {
       body: form.body,
       assignee: form.assignee || undefined,
       priority: form.priority,
-      workspace: form.workspace,
+      workspace: form.workspace || undefined,
       triage: form.triage,
     };
     if (form.parent.trim()) payload.parent = [form.parent.trim()];
@@ -251,9 +257,9 @@ async function submitSwarm() {
         @click="pickers.priority = true"
       />
       <van-field
-        v-model="form.workspace"
+        :model-value="form.workspace"
         label="工作区"
-        placeholder="scratch"
+        placeholder="默认（跟随 kanban）"
         is-link
         readonly
         @click="pickers.workspace = true"
@@ -331,7 +337,7 @@ async function submitSwarm() {
     />
     <van-action-sheet
       v-model:show="pickers.workspace"
-      :actions="WORKSPACE_ACTIONS"
+      :actions="workspaceActions"
       title="选择工作区"
       cancel-text="取消"
       close-on-click-action
