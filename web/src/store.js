@@ -306,9 +306,10 @@ export const useAppStore = defineStore("app", {
       if (!state.board) return [];
       if (state.boardFilter !== "all") {
         const col = state.board.statuses.find((c) => c.status === state.boardFilter);
-        return col ? [col] : [];
+        if (!col || state.hiddenChips.includes(col.status)) return [];
+        return [col];
       }
-      return state.board.statuses;
+      return state.board.statuses.filter((c) => !state.hiddenChips.includes(c.status));
     },
     statuses(state) {
       return state.board ? state.board.statuses : [];
