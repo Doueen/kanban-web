@@ -165,7 +165,7 @@ function openMenu(t, e) {
               <span :title="fmtTime(t.created_at)">创建于 {{ ago(t.created_at) }}</span>
             </div>
           </div>
-          <button v-if="!batchMode" class="menu-btn list-menu-btn" aria-label="操作菜单" @click="openMenu(t, $event)">⋯</button>
+          <button v-if="!batchMode" class="menu-btn list-menu-btn" aria-label="操作菜单" @click="openMenu(t, $event)" @touchstart.stop.prevent>⋯</button>
         </div>
       </div>
 

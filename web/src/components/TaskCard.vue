@@ -32,6 +32,8 @@ const showSwipe = computed(
 /* ---------- 长按 400ms → 移动到面板 ---------- */
 function onTouchStart(e) {
   cancelLongPress();
+  // 按钮区域（菜单/快捷键）不触发卡片长按——避免手机上点 ⋯ 被长按逻辑劫持
+  if (e.target.closest?.("button")) return;
   if (!store.mob.longpress || !store.isTouch || e.touches.length !== 1) return;
   lpStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   longPressing.value = true;
@@ -80,7 +82,6 @@ function openMenu(e) {
   const r = e.currentTarget.getBoundingClientRect();
   store.openMenu(props.task, r.left, r.bottom);
 }
-
 /* ---------- 桌面拖拽 ---------- */
 function onDragStart(e) {
   store.draggingId = props.task.id;
@@ -123,7 +124,7 @@ function onDragEnd() {
               aria-label="完成"
               @click.stop="quick('complete')"
             >✓</button>
-            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)">⋯</button>
+            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)" @touchstart.stop.prevent>⋯</button>
           </span>
         </div>
       </template>
@@ -145,7 +146,7 @@ function onDragEnd() {
               aria-label="完成"
               @click.stop="quick('complete')"
             >✓</button>
-            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)">⋯</button>
+            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)" @touchstart.stop.prevent>⋯</button>
           </div>
         </div>
       </template>
