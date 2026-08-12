@@ -114,12 +114,40 @@ def api_board(request: Request):
     )
 
 
+def _page_param(value, default, max_value=None):
+    """Graceful page/page_size parsing: non-numeric or <1 → default; >max → clamp."""
+    try:
+        v = int(str(value))
+    except (TypeError, ValueError):
+        return default
+    if v < 1:
+        return default
+    if max_value is not None and v > max_value:
+        return max_value
+    return v
+
+
 @app.get("/api/tasks", dependencies=[Depends(require_auth)])
-def api_tasks(status: str = None, assignee: str = None, q: str = None, archived: str = None):
+def api_tasks(status: str = None, assignee: str = None, q: str = None, archived: str = None,
+              page: str = "1", page_size: str = "20"):
     include_archived = archived in ("1", "true", "yes")
     if status and status not in db.STATUS_LABELS:
         raise HTTPException(status_code=400, detail="invalid status")
-    return db.fetch_tasks(status=status, assignee=assignee, q=q, include_archived=include_archived)
+    # page/page_size 声明为 str 而非 int：非数字/负数等非法输入回退默认值而非 422
+    page = _page_param(page, 1)
+    page_size = _page_param(page_size, 20, max_value=100)
+    items = db.fetch_tasks(status=status, assignee=assignee, q=q,
+                           include_archived=include_archived,
+                           limit=page_size, offset=(page - 1) * page_size)
+    total = db.count_tasks(status=status, assignee=assignee, q=q, include_archived=include_archived)
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
 
 
 @app.get("/api/tasks/{task_id}", dependencies=[Depends(require_auth)])

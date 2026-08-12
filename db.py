@@ -162,9 +162,9 @@ def _parse_payload(value):
 
 # --- queries ----------------------------------------------------------------
 
-def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None, db_path=None):
-    """List tasks with optional filters. Mirrors the CLI `list` view."""
-    sql = "SELECT %s FROM tasks WHERE 1=1" % TASK_COLS
+def _tasks_where(status=None, assignee=None, q=None, include_archived=False):
+    """Shared WHERE fragment + params for task listing/counting queries."""
+    sql = ""
     params = []
     if status:
         sql += " AND status = ?"
@@ -177,13 +177,33 @@ def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limi
         params.extend(["%%%s%%" % q, "%%%s%%" % q])
     if not include_archived:
         sql += " AND status != 'archived'"
-    sql += " ORDER BY priority DESC, created_at DESC"
-    if limit:
+    return sql, params
+
+
+def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None, offset=None, db_path=None):
+    """List tasks with optional filters. Mirrors the CLI `list` view.
+
+    Pagination support: `limit` + `offset` (both optional, applied after the
+    fixed ORDER BY priority DESC, created_at DESC so pages are stable).
+    """
+    where, params = _tasks_where(status=status, assignee=assignee, q=q, include_archived=include_archived)
+    sql = "SELECT %s FROM tasks WHERE 1=1%s ORDER BY priority DESC, created_at DESC" % (TASK_COLS, where)
+    if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)
+    if offset is not None:
+        sql += " OFFSET ?"
+        params.append(offset)
     with connect(db_path) as conn:
         rows = conn.execute(sql, params).fetchall()
     return [_row_to_task(r) for r in rows]
+
+
+def count_tasks(status=None, assignee=None, q=None, include_archived=False, db_path=None):
+    """Count tasks matching the same filters as fetch_tasks (pagination total)."""
+    where, params = _tasks_where(status=status, assignee=assignee, q=q, include_archived=include_archived)
+    with connect(db_path) as conn:
+        return conn.execute("SELECT COUNT(*) FROM tasks WHERE 1=1%s" % where, params).fetchone()[0]
 
 
 def get_assignees(db_path=None):
