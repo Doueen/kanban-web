@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { showToast } from "vant";
 import { useAppStore, actionLabel } from "../store";
 import { api, jsonOpts } from "../api";
+import { ok, fail, snackbar, COPY } from "../feedback";
 
 const store = useAppStore();
 
@@ -48,11 +48,13 @@ function closeNote() {
 const assignVisible = computed(() => !!store.assignTask);
 const assignValue = ref("");
 const assignBusy = ref(false);
+let assignPrev = ""; // 原指派（B1 撤销用）
 
 watch(
   () => store.assignTask,
   (t) => {
     assignValue.value = t ? t.assignee || "" : "";
+    assignPrev = t ? t.assignee || "" : "";
   }
 );
 
@@ -71,12 +73,29 @@ async function confirmAssign() {
   assignBusy.value = true;
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/assign`, jsonOpts("POST", { assignee: assignValue.value }));
-    showToast({ message: "已更新指派", type: "success" });
+    snackbar(COPY.ok.assign, {
+      actionText: "撤销",
+      onAction: () => revertAssign(t.id),
+    });
     await store.refreshBoard();
     if (store.detailId) await store.openDetail(store.detailId);
     closeAssign();
   } catch (err) {
-    showToast({ message: "失败: " + err.message, type: "fail" });
+    fail(COPY.failShort(err.message));
+  } finally {
+    assignBusy.value = false;
+  }
+}
+/* B1：assign 可逆 → 撤销回原指派 */
+async function revertAssign(id) {
+  assignBusy.value = true;
+  try {
+    await api(`/api/tasks/${encodeURIComponent(id)}/assign`, jsonOpts("POST", { assignee: assignPrev }));
+    ok(COPY.ok.assign);
+    await store.refreshBoard();
+    if (store.detailId) await store.openDetail(store.detailId);
+  } catch (err) {
+    fail(COPY.failShort(err.message));
   } finally {
     assignBusy.value = false;
   }
@@ -112,13 +131,13 @@ async function confirmModel(action) {
       model: modelName.value.trim() || null,
       provider: modelProvider.value.trim() || null,
     }));
-    showToast({ message: "已更新模型覆盖", type: "success" });
+    ok(COPY.ok.model);
     await store.refreshBoard();
     if (store.detailId) await store.openDetail(store.detailId);
     closeModel();
     return true;
   } catch (err) {
-    showToast({ message: "失败: " + err.message, type: "fail" });
+    fail(COPY.failShort(err.message));
     return false;
   } finally {
     modelBusy.value = false;
@@ -153,7 +172,7 @@ async function confirmEdit(action) {
   if (!t) return true;
   const result = editResult.value.trim();
   if (!result) {
-    showToast({ message: "结果不能为空", type: "fail" });
+    fail(COPY.validate.result);
     return false;
   }
   let metadata = editMetadata.value.trim();
@@ -161,7 +180,7 @@ async function confirmEdit(action) {
     try {
       metadata = JSON.parse(metadata);
     } catch (_) {
-      showToast({ message: "元数据不是合法 JSON", type: "fail" });
+      fail(COPY.validate.json);
       return false;
     }
   } else {
@@ -172,13 +191,13 @@ async function confirmEdit(action) {
   editBusy.value = true;
   try {
     const res = await api(`/api/tasks/${encodeURIComponent(t.id)}/edit`, jsonOpts("POST", payload));
-    showToast({ message: res.message || "已保存结果", type: "success" });
+    ok(res.message || COPY.ok.resultSaved);
     await store.refreshBoard();
     if (store.detailId) await store.openDetail(store.detailId);
     closeEdit();
     return true;
   } catch (err) {
-    showToast({ message: "保存失败: " + err.message, type: "fail" });
+    fail(COPY.fail("保存", err.message));
     return false;
   } finally {
     editBusy.value = false;

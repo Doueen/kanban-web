@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { showToast } from "vant";
 import { THEMES, useAppStore } from "../store";
+import { ok, COPY } from "../feedback";
 
 const store = useAppStore();
 const show = ref(false);
@@ -22,7 +22,7 @@ function toggle() {
 function select(id) {
   store.applyTheme(id);
   show.value = false;
-  showToast({ message: "主题已切换", duration: 1200 });
+  ok(COPY.ok.theme, { duration: 1200 });
 }
 function onSheetSelect(a) {
   select(a.value);

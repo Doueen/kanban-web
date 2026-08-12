@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
-import { showToast } from "vant";
 import { useAppStore, STATUS_ORDER, STATUS, actionForTarget } from "../store";
+import { fail, COPY } from "../feedback";
 
 const store = useAppStore();
 
@@ -23,13 +23,22 @@ const actions = computed(() => {
   return list;
 });
 
+/* M1-5 E10: 无效目标预判灰化禁用（actionForTarget 为空 / 归档任务无合法迁移） */
+function targetDisabled(st) {
+  const t = task.value;
+  if (!t) return true;
+  if (st === t.status) return true;
+  if (t.status === "archived") return true;
+  return !actionForTarget(t, st);
+}
+
 async function moveTo(st) {
   const t = task.value;
   if (!t) return;
   if (st === t.status) return;
   const move = actionForTarget(t, st);
   if (!move) {
-    showToast({ message: `无法移动到「${STATUS[st] || st}」`, type: "fail" });
+    fail(COPY.misc.cannotMoveTo(STATUS[st] || st));
     return;
   }
   store.closeMove();
@@ -59,8 +68,8 @@ async function doAction(action) {
         v-for="st in STATUS_ORDER"
         :key="st"
         class="move-item"
-        :class="['st-' + st, { disabled: st === task?.status }]"
-        :disabled="st === task?.status"
+        :class="['st-' + st, { disabled: targetDisabled(st) }]"
+        :disabled="targetDisabled(st)"
         @click="moveTo(st)"
       >
         <span class="dot"></span>

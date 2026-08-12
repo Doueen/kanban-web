@@ -1,8 +1,8 @@
 <script setup>
 import { computed, reactive, ref } from "vue";
-import { showToast, showConfirmDialog } from "vant";
 import { useAppStore, MOB_SWITCHES, THEMES, STATUS_ORDER, STATUS, STATUS_CSS } from "../store";
 import { api, jsonOpts } from "../api";
+import { ok, fail, confirm, loading, COPY } from "../feedback";
 import SettingSwitch from "../components/SettingSwitch.vue";
 
 const store = useAppStore();
@@ -18,11 +18,11 @@ const newBoard = reactive({ slug: "", name: "", description: "", icon: "", color
 async function boardOp(label, fn) {
   try {
     const res = await fn();
-    showToast({ message: (res && res.message) || label + "成功", type: "success" });
+    ok((res && res.message) || label + "成功");
     await store.loadBoards();
     await store.refreshBoard();
   } catch (err) {
-    showToast({ message: label + "失败: " + err.message, type: "fail" });
+    fail(COPY.fail(label, err.message));
   }
 }
 
@@ -31,7 +31,7 @@ async function doSwitch(slug) {
 }
 async function doCreate() {
   const slug = newBoard.slug.trim();
-  if (!slug) { showToast({ message: "slug 不能为空", type: "fail" }); return; }
+  if (!slug) { fail(COPY.validate.slug); return; }
   await boardOp("创建", () =>
     api("/api/boards", jsonOpts("POST", {
       slug,
@@ -82,20 +82,20 @@ async function onBoardMenuSelect(a) {
   } else if (a.op === "clearwd") {
     await doWorkdir(b.slug, null);
   } else if (a.op === "archive") {
-    try {
-      await showConfirmDialog({ title: "归档 board", message: `确认归档「${b.name || b.slug}」？（可恢复）` });
-    } catch (_) { return; }
+    const c = COPY.confirm.archiveBoard(b.name || b.slug);
+    const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText });
+    if (!confirmed) return;
     await doArchive(b.slug);
   } else if (a.op === "delete") {
-    try {
-      await showConfirmDialog({ title: "永久删除", message: `确认永久删除「${b.name || b.slug}」？此操作不可恢复！` });
-    } catch (_) { return; }
+    const c = COPY.confirm.deleteBoard(b.name || b.slug);
+    const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText, danger: true });
+    if (!confirmed) return;
     await doDelete(b.slug);
   }
 }
 async function confirmRename() {
   const name = renameInput.value.trim();
-  if (!name) { showToast({ message: "名称不能为空", type: "fail" }); return; }
+  if (!name) { fail(COPY.validate.name); return; }
   renameShow.value = false;
   await boardOp("重命名", () => api(`/api/boards/${encodeURIComponent(boardMenuTarget.value.slug)}/rename`, jsonOpts("POST", { name })));
 }
@@ -145,13 +145,13 @@ function onNotifyTaskSelect(a) {
 
 async function loadNotifySubs() {
   const tid = notifyTask.value.trim();
-  if (!tid) { showToast({ message: "请输入或选择任务", type: "fail" }); return; }
+  if (!tid) { fail(COPY.validate.notifyTask); return; }
   notifyLoading.value = true;
   notifySubs.value = null;
   try {
     notifySubs.value = await api(`/api/tasks/${encodeURIComponent(tid)}/notify`);
   } catch (err) {
-    showToast({ message: "加载失败: " + err.message, type: "fail" });
+    fail(COPY.fail("加载", err.message));
     notifySubs.value = [];
   } finally {
     notifyLoading.value = false;
@@ -166,10 +166,10 @@ async function delNotifySub(s) {
       chat_id: s.chat_id || s.chatId,
       thread_id: s.thread_id,
     }));
-    showToast({ message: "已取消订阅", type: "success" });
+    ok(COPY.ok.unsubscribe);
     loadNotifySubs();
   } catch (err) {
-    showToast({ message: "取消失败: " + err.message, type: "fail" });
+    fail(COPY.fail("取消", err.message));
   }
 }
 
@@ -187,35 +187,62 @@ async function runGc(action) {
   const ev = parseInt(gcEvents.value, 10);
   const lg = parseInt(gcLogs.value, 10);
   gcShow.value = false;
-  showToast({ message: "GC 执行中…", type: "loading", duration: 0, forbidClick: false });
+  loading("GC 执行中…", { duration: 0 });
   try {
     const res = await api("/api/gc", jsonOpts("POST", {
       event_retention_days: isNaN(ev) ? undefined : ev,
       log_retention_days: isNaN(lg) ? undefined : lg,
     }));
     maintainOut.value = res.message || "GC 完成";
-    showToast({ message: res.message || "GC 完成", type: "success" });
+    ok(res.message || "GC 完成");
     return true;
   } catch (err) {
-    showToast({ message: "GC 失败: " + err.message, type: "fail" });
+    fail(COPY.fail("GC", err.message));
     return true;
   }
 }
 
 async function runRepair() {
-  showToast({ message: "DB 检查中…", type: "loading", duration: 0, forbidClick: false });
+  loading("DB 检查中…", { duration: 0 });
   try {
     const res = await api("/api/repair", { method: "POST" });
     maintainOut.value = JSON.stringify(res, null, 2);
-    showToast({ message: "检查完成", type: "success" });
+    ok("检查完成");
   } catch (err) {
-    showToast({ message: "检查失败: " + err.message, type: "fail" });
+    fail(COPY.fail("检查", err.message));
+  }
+}
+
+/* ---------- 主动触发调度器 ---------- */
+const schedRunning = ref(false);
+
+async function runScheduler() {
+  if (schedRunning.value) return; // 防重复点击：请求进行中忽略再次点击
+  schedRunning.value = true;
+  try {
+    const res = await api("/api/scheduler/run", { method: "POST" });
+    const tid = res && (res.task_id || res.taskId);
+    const spawned = res && Array.isArray(res.task_ids) ? res.task_ids.length : null;
+    ok(
+      res && res.message
+        ? res.message
+        : spawned != null
+          ? `调度已触发 · 新调度 ${spawned} 个任务`
+          : tid
+            ? `调度已触发 · ${tid}`
+            : "调度已触发"
+    );
+  } catch (err) {
+    if (err.message === "Unauthorized") return; // 401：api() 已切登录页，不再重复提示
+    fail(COPY.fail("触发调度", err.message));
+  } finally {
+    schedRunning.value = false;
   }
 }
 
 function onMobChange(key, val) {
   store.setMob(key, val);
-  showToast({ message: "已更新", duration: 1200 });
+  ok("已更新", { duration: 1200 });
 }
 
 /* ---------- 外观：跟随系统深色 ---------- */
@@ -231,17 +258,17 @@ function onSysDark(val) {
   } else {
     store.applyTheme(store.theme);
   }
-  showToast({ message: val ? "已开启跟随系统" : "已关闭跟随系统", duration: 1200 });
+  ok(val ? "已开启跟随系统" : "已关闭跟随系统", { duration: 1200 });
 }
 
 /* ---------- 看板分类显示开关 ---------- */
 function onChipToggle(st) {
   store.toggleChip(st);
-  showToast({ message: store.hiddenChips.includes(st) ? "已隐藏「" + STATUS[st] + "」" : "已显示「" + STATUS[st] + "」", duration: 1200 });
+  ok(store.hiddenChips.includes(st) ? "已隐藏「" + STATUS[st] + "」" : "已显示「" + STATUS[st] + "」", { duration: 1200 });
 }
 
 function logout() {
-  showToast({ message: "已退出登录", type: "info", duration: 800 });
+  ok("已退出登录", { duration: 800, type: "info" });
   setTimeout(() => store.logout(), 400);
 }
 </script>
@@ -398,6 +425,18 @@ function logout() {
         <h4>数据库检查 / 修复</h4>
         <div class="settings-actions">
           <van-button @click="runRepair">运行检查</van-button>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h4>调度器</h4>
+        <div class="settings-actions">
+          <van-button
+            type="primary"
+            :loading="schedRunning"
+            :disabled="schedRunning"
+            @click="runScheduler"
+          >立即调度</van-button>
+          <span class="panel-note">触发一次调度器运行，立即拾取待调度任务</span>
         </div>
       </div>
       <pre v-if="maintainOut" class="pre-block maintain-out">{{ maintainOut }}</pre>

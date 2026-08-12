@@ -25,7 +25,7 @@ if ("serviceWorker" in navigator) {
 
 /* 产物下载：<a href="/api/download"> 原生导航不带 Authorization 会 401，
    改为 fetch 携带凭据 → blob 下载 */
-import { showToast } from "vant";
+import { fail } from "./feedback";
 
 async function downloadDeliverable(url) {
   const m = url.match(/[?&]path=([^&]+)/);
@@ -34,7 +34,7 @@ async function downloadDeliverable(url) {
   let cred = null;
   try { cred = JSON.parse(localStorage.getItem("kb-auth") || "null"); } catch (_) { /* */ }
   if (!cred || !cred.u) {
-    showToast({ message: "请先登录", type: "fail" });
+    fail("请先登录");
     return;
   }
   try {
@@ -42,7 +42,7 @@ async function downloadDeliverable(url) {
       headers: { Authorization: "Basic " + btoa(cred.u + ":" + cred.p) },
     });
     if (!res.ok) {
-      showToast({ message: "下载失败: " + (res.status === 401 ? "未认证" : res.status), type: "fail" });
+      fail("下载失败: " + (res.status === 401 ? "未认证" : res.status));
       return;
     }
     const blob = await res.blob();
@@ -55,7 +55,7 @@ async function downloadDeliverable(url) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
   } catch (err) {
-    showToast({ message: "下载失败: " + err.message, type: "fail" });
+    fail("下载失败: " + err.message);
   }
 }
 

@@ -1380,3 +1380,101 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
 @media (prefers-reduced-motion: reduce) {
   .net-banner { animation: none; }
 }
+
+/* ================= 操作提示组件（feedback.js，操作提示清单 v1.0）=================
+   追加覆盖块：Snackbar 撤销条 / 失败重试条 样式；不重写既有选择器。
+   z-index ≥4000（高于 van-popup，参考 pitfall 15）；跟随主题 CSS 变量。 */
+.fb-snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--card, #141516);
+  color: var(--text, #f7f8f8);
+  border: 1px solid var(--border-strong, rgba(255,255,255,0.14));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  line-height: 1.4;
+  animation: fbSnackIn 0.25s ease-out;
+  box-sizing: border-box;
+}
+.fb-snackbar-danger { border-left: 3px solid #ff5c6c; }
+.fb-snackbar-fail {
+  border-left: 3px solid #ff5c6c;
+  background: color-mix(in srgb, #ff5c6c 8%, var(--card, #141516));
+}
+.fb-snack-msg { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.fb-snack-action {
+  flex: none;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent, #5ff0e0);
+  background: transparent;
+  color: var(--accent, #5ff0e0);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fb-snack-action:hover { background: color-mix(in srgb, var(--accent, #5ff0e0) 12%, transparent); }
+.fb-snack-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #8a8f98);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fb-snack-close:hover { color: var(--text, #f7f8f8); background: color-mix(in srgb, var(--text, #fff) 8%, transparent); }
+@keyframes fbSnackIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-snackbar { animation: none; }
+}
+
+/* ========== M1-5 E8：搜索高亮 + 命中态 + 空结果引导 ========== */
+.hl {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.card.search-hit {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.card.search-id-hit { border-color: var(--accent); }
+.card-id.hl-id {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+.search-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 12px 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius, 10px);
+  background: var(--bg2);
+  color: var(--muted);
+  font-size: 13px;
+}
+.search-guide .btn { white-space: nowrap; }

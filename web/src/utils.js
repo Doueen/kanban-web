@@ -20,6 +20,38 @@ export function esc(s) {
   }[c]));
 }
 
+/* M1-5 E8: 搜索高亮分段 —— 返回 [{t, m}]，m=true 的段应包 <mark>（大小写不敏感） */
+export function highlightParts(text, q) {
+  const s = String(text ?? "");
+  if (!q) return [{ t: s, m: false }];
+  const needle = String(q).toLowerCase();
+  if (!needle) return [{ t: s, m: false }];
+  const low = s.toLowerCase();
+  const parts = [];
+  let i = 0;
+  while (i < s.length) {
+    const idx = low.indexOf(needle, i);
+    if (idx < 0) {
+      parts.push({ t: s.slice(i), m: false });
+      break;
+    }
+    if (idx > i) parts.push({ t: s.slice(i, idx), m: false });
+    parts.push({ t: s.slice(idx, idx + needle.length), m: true });
+    i = idx + needle.length;
+  }
+  return parts.length ? parts : [{ t: s, m: false }];
+}
+
+/* M1-5 E8: 任务是否命中搜索（标题/ID） */
+export function taskMatchesSearch(task, q) {
+  const needle = String(q || "").trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    String(task.title || "").toLowerCase().includes(needle) ||
+    String(task.id || "").toLowerCase().includes(needle)
+  );
+}
+
 export function fmtTime(unix) {
   if (!unix) return "—";
   const d = new Date(unix * 1000);

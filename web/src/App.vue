@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { showToast } from "vant";
+import { showDialog } from "vant";
 import { useAppStore, STATUS_ORDER, STATUS, vantThemeVars } from "./store";
 import { api, jsonOpts, setOnUnauthorized } from "./api";
+import { ok, fail, COPY } from "./feedback";
 
 import LoginScreen from "./components/LoginScreen.vue";
 import ThemeSwitcher from "./components/ThemeSwitcher.vue";
@@ -45,7 +46,7 @@ async function openBoardSwitch() {
     disabled: b.slug === cur,
   }));
   if (!boardActions.value.length) {
-    showToast({ message: "暂无其他看板", type: "fail" });
+    fail(COPY.misc.noOtherBoard);
     return;
   }
   boardSheet.value = true;
@@ -55,9 +56,9 @@ async function onBoardSelect(item) {
   boardSwitching.value = true;
   try {
     await store.switchBoard(item.slug);
-    showToast({ message: `已切换到「${item.name}」`, type: "success" });
+    ok(COPY.ok.switched(item.name));
   } catch (err) {
-    showToast({ message: "切换失败: " + err.message, type: "fail" });
+    fail(COPY.fail("切换", err.message));
   } finally {
     boardSwitching.value = false;
   }
@@ -147,6 +148,47 @@ function onVis() {
   }
 }
 
+/* ================= M1-5 E9: 全局键盘快捷键 =================
+   Esc：依次关闭 详情 → 菜单 → 移动到 → 创建弹窗
+   c：新建任务；/：聚焦搜索；?：快捷键提示 */
+const SHORTCUT_HELP = [
+  ["Esc", "依次关闭详情 / 菜单 / 移动到 / 新建弹窗"],
+  ["c", "新建任务"],
+  ["/", "聚焦搜索"],
+  ["?", "显示本提示"],
+  ["Enter（卡片聚焦时）", "打开任务详情"],
+];
+function isTypingTarget(t) {
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+}
+async function onGlobalKeydown(e) {
+  if (!store.authed) return;
+  if (e.key === "Escape") {
+    if (store.detailId) { e.preventDefault(); store.closeDetail(); }
+    else if (store.menuVisible) { e.preventDefault(); store.closeMenu(); }
+    else if (store.moveTask) { e.preventDefault(); store.closeMove(); }
+    else if (store.showCreate) { e.preventDefault(); store.showCreate = false; }
+    return;
+  }
+  if (isTypingTarget(e.target)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "c" || e.key === "C") {
+    e.preventDefault();
+    store.openCreate({});
+  } else if (e.key === "/") {
+    e.preventDefault();
+    const input = document.querySelector(".controls .van-search input");
+    if (input) input.focus();
+  } else if (e.key === "?") {
+    e.preventDefault();
+    await showDialog({
+      title: "键盘快捷键",
+      message: SHORTCUT_HELP.map(([k, d]) => `【${k}】 ${d}`).join("\n"),
+      confirmButtonText: "知道了",
+    });
+  }
+}
+
 onMounted(() => {
   setOnUnauthorized(() => store.logout());
   store.initTheme();
@@ -160,12 +202,14 @@ onMounted(() => {
   document.addEventListener("visibilitychange", onVis);
   window.addEventListener("offline", onOffline);
   window.addEventListener("online", onOnline);
+  window.addEventListener("keydown", onGlobalKeydown);
 });
 
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", onVis);
   window.removeEventListener("offline", onOffline);
   window.removeEventListener("online", onOnline);
+  window.removeEventListener("keydown", onGlobalKeydown);
   store.stopPolling();
   store.stopEventPolling();
 });

@@ -1,7 +1,7 @@
 /* Pinia store — board/tasks/filter/theme/auth/折叠状态/移动端开关/全局弹层。 */
 import { defineStore } from "pinia";
 import { api, apiText, jsonOpts } from "./api";
-import { ok, fail, confirm, loading, COPY } from "./feedback";
+import { ok, fail, confirm, loading, snackbar, COPY } from "./feedback";
 
 /* M1-2 E5: refreshBoard in-flight 去重 + 单调序号竞态守卫 */
 let _boardSeq = 0;
@@ -62,6 +62,13 @@ export function actionLabel(a) {
   return ACTION_LABEL[a] || a;
 }
 
+/* B1 可逆动作 → 5s 撤销条（操作提示清单 §3 B1：block→unblock、schedule→unblock、request-review→reopen-review） */
+const UNDO_ACTIONS = {
+  block: "unblock",
+  schedule: "unblock",
+  "request-review": "reopen-review",
+};
+
 export function actionForTarget(task, targetStatus) {
   if (targetStatus === task.status) return null;
   switch (targetStatus) {
@@ -86,6 +93,7 @@ export function actionForTarget(task, targetStatus) {
 export function menuItems(task) {
   const items = [];
   items.push({ label: "查看详情", action: "view" });
+  items.push({ label: "移动到", action: "move" });
   if (task.status === "running") {
     items.push({ label: "回收运行", action: "reclaim" });
     items.push({ label: "心跳", action: "heartbeat" });
@@ -510,7 +518,17 @@ export const useAppStore = defineStore("app", {
       if (!note && ["promote", "request-changes"].includes(action)) note = "via web";
       try {
         const res = await api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action, note }));
-        ok(res.message || actionLabel(action) || "操作完成");
+        const label = actionLabel(action);
+        const undo = UNDO_ACTIONS[action];
+        if (undo) {
+          /* B1：可逆动作成功 → 5s 撤销条（含手动关闭），替代普通 toast */
+          snackbar(`已${label}`, {
+            actionText: "撤销",
+            onAction: () => this.runAction(id, undo, "undo via web"),
+          });
+        } else {
+          ok(res.message || label || "操作完成");
+        }
         await this.refreshBoard();
         if (this.detailId) await this.openDetail(this.detailId);
         return res;
@@ -535,6 +553,7 @@ export const useAppStore = defineStore("app", {
     handleTaskAction(task, action) {
       const needNote = ["block", "schedule", "promote", "request-changes", "reopen-review"];
       if (action === "view") { this.openDetail(task.id); return; }
+      if (action === "move") { this.openMove(task); return; }
       if (action === "assign") { this.assignTask = task; return; }
       if (action === "child") { this.openCreate({ parent: task.id }); return; }
       if (action === "edit-result") { this.editTask = task; return; }

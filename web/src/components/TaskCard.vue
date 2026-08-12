@@ -1,13 +1,28 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useAppStore } from "../store";
+import { highlightParts, taskMatchesSearch } from "../utils";
+import { startDragGhost, stopDragGhost, transparentDragImage } from "../dragGhost";
 
 const props = defineProps({
   task: { type: Object, required: true },
   index: { type: Number, default: 0 },
+  noAnim: { type: Boolean, default: false },
+  highlight: { type: String, default: "" },
 });
 
 const store = useAppStore();
+
+/* M1-5 E8: 搜索高亮分段 + 命中态（标题/ID） */
+const titleParts = computed(() => highlightParts(props.task.title, props.highlight));
+const idHit = computed(() => {
+  const q = (props.highlight || "").trim().toLowerCase();
+  return !!q && String(props.task.id || "").toLowerCase().includes(q);
+});
+const searchHit = computed(() => {
+  const q = (props.highlight || "").trim();
+  return !!q && taskMatchesSearch(props.task, q);
+});
 
 const longPressing = ref(false);
 let lpTimer = null;
@@ -67,6 +82,15 @@ function onClick() {
   store.openDetail(props.task.id);
 }
 
+/* 键盘可达性：卡片可聚焦，Enter/空格打开详情 */
+function onKeydown(e) {
+  if (e.target !== e.currentTarget) return;
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    onClick();
+  }
+}
+
 async function quick(action) {
   swipeCell.value?.close();
   try {
@@ -87,9 +111,15 @@ function onDragStart(e) {
   store.draggingId = props.task.id;
   e.dataTransfer.effectAllowed = "move";
   e.dataTransfer.setData("text/plain", props.task.id);
+  /* 减少动效模式下退回系统默认拖拽反馈；正常模式用自绘跟手幽灵卡 */
+  if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    e.dataTransfer.setDragImage(transparentDragImage(), 0, 0);
+    startDragGhost(props.task, "st-" + props.task.status);
+  }
 }
 function onDragEnd() {
   store.draggingId = null;
+  stopDragGhost();
 }
 </script>
 
@@ -97,10 +127,14 @@ function onDragEnd() {
   <van-swipe-cell :disabled="!showSwipe" ref="swipeCell">
     <div
       class="card"
-      :class="['st-' + task.status, { 'long-press': longPressing, dragging: store.draggingId === task.id }]"
+      :class="['st-' + task.status, { 'long-press': longPressing, dragging: store.draggingId === task.id, 'no-anim': noAnim, 'search-hit': searchHit, 'search-id-hit': idHit }]"
       draggable="true"
+      tabindex="0"
+      role="button"
+      :aria-label="'打开任务：' + task.title"
       :style="{ animationDelay: Math.min(index, 7) * 40 + 'ms' }"
       @click="onClick"
+      @keydown="onKeydown"
       @touchstart="onTouchStart"
       @touchmove="onTouchMove"
       @touchend="onTouchEnd"
@@ -111,7 +145,9 @@ function onDragEnd() {
       <!-- 移动端精简卡片：标题两行截断 + 指派首字母圆 + 优先级 + 快捷操作 -->
       <template v-if="store.isMobile">
         <div class="mob-head">
-          <div class="card-title mob-clamp">{{ task.title }}</div>
+          <div class="card-title mob-clamp">
+            <template v-for="(p, i) in titleParts" :key="i"><mark v-if="p.m" class="hl">{{ p.t }}</mark><template v-else>{{ p.t }}</template></template>
+          </div>
           <span v-if="task.assignee" class="mob-avatar" :title="task.assignee">{{ avatar }}</span>
         </div>
         <div class="mob-meta">
@@ -131,14 +167,16 @@ function onDragEnd() {
 
       <!-- 桌面端完整信息 -->
       <template v-else>
-        <div class="card-title">{{ task.title }}</div>
+        <div class="card-title">
+          <template v-for="(p, i) in titleParts" :key="i"><mark v-if="p.m" class="hl">{{ p.t }}</mark><template v-else>{{ p.t }}</template></template>
+        </div>
         <div class="card-meta">
           <div class="card-tags">
             <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority">P{{ task.priority }}</span>
             <span v-if="task.assignee" class="card-assignee" :title="task.assignee">@{{ task.assignee }}</span>
           </div>
           <div class="card-tags">
-            <span class="card-id">{{ task.id }}</span>
+            <span class="card-id" :class="{ 'hl-id': idHit }">{{ task.id }}</span>
             <button
               v-if="store.mob.quickact && task.status !== 'done' && task.status !== 'archived'"
               class="card-quick"

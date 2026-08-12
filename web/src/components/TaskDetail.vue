@@ -1,9 +1,9 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { showToast } from "vant";
 import { useAppStore, STATUS, STATUS_CSS } from "../store";
 import { api, apiText, jsonOpts } from "../api";
 import { fmtTime, ago, mdToHtml, kindColor, shortPayload } from "../utils";
+import { ok, fail, COPY } from "../feedback";
 
 const store = useAppStore();
 
@@ -88,6 +88,8 @@ const actionButtons = computed(() => {
   if (t.status !== "done" && t.status !== "archived") btns.push({ label: "改指派", action: "assign" });
   if (t.status !== "archived") btns.push({ label: "归档", action: "archive" });
   btns.push({ label: "子任务", action: "child" });
+  /* M1-5 E10: 详情抽屉「移动到」入口（复用 MoveSheet） */
+  btns.push({ label: "移动到", action: "move" });
   if (t.status !== "running") btns.push({ label: "模型覆盖", action: "model" });
   return btns;
 });
@@ -99,6 +101,7 @@ function onAction(action) {
   if (action === "assign") { store.assignTask = t; return; }
   if (action === "model") { store.modelTask = t; return; }
   if (action === "edit-result") { store.editTask = t; return; }
+  if (action === "move") { store.openMove(t); return; }
   if (action === "specify" || action === "decompose" || action === "claim" || action === "heartbeat") { store.runExtended(t.id, action); return; }
   if (["block", "schedule", "promote", "request-changes", "reopen-review"].includes(action)) {
     store.noteTask = t;
@@ -116,29 +119,29 @@ function openLinked(id) {
 async function sendComment() {
   const t = detail.value.task;
   const body = commentText.value.trim();
-  if (!body) { showToast({ message: "评论不能为空", type: "fail" }); return; }
+  if (!body) { fail(COPY.validate.comment); return; }
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/comment`, jsonOpts("POST", { body }));
-    showToast({ message: "评论已发布", type: "success" });
+    ok(COPY.ok.comment);
     commentText.value = "";
     await load();
   } catch (err) {
-    showToast({ message: "失败: " + err.message, type: "fail" });
+    fail(COPY.failShort(err.message));
   }
 }
 
 /* ---------- 附件 ---------- */
 async function uploadFile(file) {
   const t = detail.value.task;
-  if (!file) { showToast({ message: "请选择文件", type: "fail" }); return; }
+  if (!file) { fail(COPY.validate.file); return; }
   const fd = new FormData();
   fd.append("file", file);
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/attachments`, { method: "POST", body: fd });
-    showToast({ message: "上传成功", type: "success" });
+    ok(COPY.ok.upload);
     await load();
   } catch (err) {
-    showToast({ message: "上传失败: " + err.message, type: "fail" });
+    fail(COPY.fail("上传", err.message));
   }
 }
 function onUploadRead(item) {
@@ -148,10 +151,10 @@ async function delAttach(a) {
   const t = detail.value.task;
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/attachments/${a.id}`, { method: "DELETE" });
-    showToast({ message: "附件已删除", type: "success" });
+    ok(COPY.ok.attachDel);
     await load();
   } catch (err) {
-    showToast({ message: "删除失败: " + err.message, type: "fail" });
+    fail(COPY.fail("删除", err.message));
   }
 }
 
@@ -159,24 +162,24 @@ async function delAttach(a) {
 async function addLink() {
   const t = detail.value.task;
   const other = linkInput.value.trim();
-  if (!other) { showToast({ message: "请输入任务 ID", type: "fail" }); return; }
+  if (!other) { fail(COPY.validate.linkId); return; }
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/link`, jsonOpts("POST", { other_id: other, direction: "child" }));
-    showToast({ message: "依赖已添加", type: "success" });
+    ok(COPY.ok.linkAdd);
     linkInput.value = "";
     await load();
   } catch (err) {
-    showToast({ message: "失败: " + err.message, type: "fail" });
+    fail(COPY.failShort(err.message));
   }
 }
 async function unlink(dir, other) {
   const t = detail.value.task;
   try {
     await api(`/api/tasks/${encodeURIComponent(t.id)}/link/${encodeURIComponent(other)}?direction=${dir}`, { method: "DELETE" });
-    showToast({ message: "依赖已解除", type: "success" });
+    ok(COPY.ok.linkDel);
     await load();
   } catch (err) {
-    showToast({ message: "失败: " + err.message, type: "fail" });
+    fail(COPY.failShort(err.message));
   }
 }
 
@@ -241,18 +244,18 @@ async function addNotify() {
   const t = detail.value.task;
   const platform = notifyForm.value.platform.trim();
   const chat = notifyForm.value.chat_id.trim();
-  if (!platform || !chat) { showToast({ message: "请选择消息平台", type: "fail" }); return; }
+  if (!platform || !chat) { fail(COPY.validate.platform); return; }
   try {
     const res = await api(`/api/tasks/${encodeURIComponent(t.id)}/notify`, jsonOpts("POST", {
       platform,
       chat_id: chat,
       thread_id: notifyForm.value.thread_id.trim() || undefined,
     }));
-    showToast({ message: res.message || "已订阅", type: "success" });
+    ok(res.message || COPY.ok.subscribe);
     notifyForm.value = { platform: "", chat_id: "", thread_id: "" };
     await loadNotify();
   } catch (err) {
-    showToast({ message: "订阅失败: " + err.message, type: "fail" });
+    fail(COPY.fail("订阅", err.message));
   }
 }
 async function delNotify(s) {
@@ -263,10 +266,10 @@ async function delNotify(s) {
       chat_id: s.chat_id || s.chatId,
       thread_id: s.thread_id,
     }));
-    showToast({ message: "已取消订阅", type: "success" });
+    ok(COPY.ok.unsubscribe);
     await loadNotify();
   } catch (err) {
-    showToast({ message: "取消失败: " + err.message, type: "fail" });
+    fail(COPY.fail("取消", err.message));
   }
 }
 

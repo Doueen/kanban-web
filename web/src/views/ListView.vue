@@ -1,9 +1,9 @@
 <script setup>
 import { computed, ref } from "vue";
-import { showConfirmDialog, showToast } from "vant";
 import { useAppStore, STATUS, STATUS_CSS, STATUS_ORDER } from "../store";
 import { api, jsonOpts } from "../api";
 import { ago, fmtTime } from "../utils";
+import { ok, fail, confirm, COPY } from "../feedback";
 
 const store = useAppStore();
 const refreshing = ref(false);
@@ -25,22 +25,20 @@ function toggleSelect(id) {
 }
 async function batchAction(action, label) {
   const ids = Array.from(selected.value);
-  if (!ids.length) { showToast({ message: "请先选择任务", type: "fail" }); return; }
-  try {
-    await showConfirmDialog({
-      title: `批量${label}`,
-      message: `对 ${ids.length} 个任务执行「${label}」？`,
-      confirmButtonText: label,
-    });
-  } catch (_) { return; }
-  let ok = 0, fail = 0;
+  if (!ids.length) { fail(COPY.validate.batchEmpty); return; }
+  const c = COPY.confirm.batch(label, ids.length);
+  const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText, danger: true });
+  if (!confirmed) return;
+  let okCount = 0, failCount = 0;
   for (const id of ids) {
     try {
       await api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action }));
-      ok++;
-    } catch (_) { fail++; }
+      okCount++;
+    } catch (_) { failCount++; }
   }
-  showToast({ message: `${label}完成 ${ok} 个${fail ? "，失败 " + fail : ""}`, type: fail ? "fail" : "success" });
+  const msg = COPY.ok.batch(label, okCount, failCount);
+  if (failCount) fail(msg);
+  else ok(msg);
   batchMode.value = false;
   selected.value = new Set();
   await store.refreshBoard();

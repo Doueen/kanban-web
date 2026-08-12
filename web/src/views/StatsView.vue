@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
-import { showToast } from "vant";
 import { useAppStore, STATUS_ORDER, STATUS, STATUS_CSS } from "../store";
 import { api } from "../api";
 import { dur, fmtTime, ago, kindColor, shortPayload } from "../utils";
+import { fail } from "../feedback";
 
 const store = useAppStore();
 const refreshing = ref(false);
@@ -13,7 +13,7 @@ async function loadStats() {
   try {
     stats.value = await api("/api/stats");
   } catch (err) {
-    showToast({ message: "统计加载失败: " + err.message, type: "fail" });
+    fail("统计加载失败: " + err.message);
   }
 }
 

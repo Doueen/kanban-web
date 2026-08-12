@@ -11,6 +11,15 @@ const boardEl = ref(null);
 const refreshing = ref(false);
 const activeDot = ref(0);
 
+/* M1-5 E8: 搜索无匹配 → 引导去列表页 */
+const searchEmpty = computed(() => {
+  const q = store.search.trim().toLowerCase();
+  if (!q || !store.board) return false;
+  return !store.board.statuses.some((c) =>
+    c.tasks.some((t) => t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
+  );
+});
+
 /* ---------- 邻页露头（P2#12）：单列模式下一列，仅移动端 ---------- */
 const peekCol = computed(() => {
   if (store.boardFilter === "all" || !store.isMobile || !store.board) return null;
@@ -146,6 +155,12 @@ onMounted(() => {
   <section id="board-view" class="view" aria-label="看板">
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
       <BoardChips v-if="store.mob.chips && store.board" />
+
+      <!-- M1-5 E8: 搜索无匹配 → 引导去列表页 -->
+      <div v-if="searchEmpty" class="search-guide" role="note">
+        <span>没有匹配「{{ store.search.trim() }}」的任务</span>
+        <button class="btn btn-sm" @click="store.setView('list')">去列表页查看 →</button>
+      </div>
 
       <!-- 骨架屏（P0#4） -->
       <div v-if="!store.board" class="board-loading" aria-hidden="true">

@@ -1,8 +1,8 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
-import { showToast } from "vant";
 import { useAppStore, STATUS } from "../store";
 import { api, jsonOpts } from "../api";
+import { ok, fail, loading, COPY } from "../feedback";
 
 const store = useAppStore();
 
@@ -148,7 +148,7 @@ async function submit() {
 async function submitNormal() {
   const title = form.title.trim();
   if (!title) {
-    showToast({ message: "标题不能为空", type: "fail" });
+    fail(COPY.validate.title);
     return;
   }
   submitting.value = true;
@@ -163,12 +163,12 @@ async function submitNormal() {
     };
     if (form.parent.trim()) payload.parent = [form.parent.trim()];
     const res = await api("/api/tasks", jsonOpts("POST", payload));
-    showToast({ message: "已创建 " + (res.id || ""), type: "success" });
+    ok(COPY.ok.created(res.id || ""));
     store.showCreate = false;
     await store.refreshBoard();
     if (res.id) store.openDetail(res.id);
   } catch (err) {
-    showToast({ message: "创建失败: " + err.message, type: "fail" });
+    fail(COPY.fail("创建", err.message));
   } finally {
     submitting.value = false;
   }
@@ -177,7 +177,7 @@ async function submitNormal() {
 async function submitSwarm() {
   const goal = swarm.goal.trim();
   if (!goal) {
-    showToast({ message: "目标不能为空", type: "fail" });
+    fail(COPY.validate.goal);
     return;
   }
   const workers = swarm.workers
@@ -188,11 +188,11 @@ async function submitSwarm() {
     }))
     .filter((w) => w.profile);
   if (!workers.length) {
-    showToast({ message: "至少需要一个 worker profile", type: "fail" });
+    fail(COPY.validate.workers);
     return;
   }
   if (!swarm.verifier.trim() || !swarm.synthesizer.trim()) {
-    showToast({ message: "verifier 和 synthesizer 必填", type: "fail" });
+    fail(COPY.validate.swarmRoles);
     return;
   }
   const payload = {
@@ -208,14 +208,14 @@ async function submitSwarm() {
   };
   if (swarm.createdBy) payload.created_by = swarm.createdBy;
   submitting.value = true;
-  showToast({ message: "Swarm 创建中…可能需要 1-3 分钟", type: "loading", duration: 12000, forbidClick: false });
+  loading("Swarm 创建中…可能需要 1-3 分钟");
   try {
     const res = await api("/api/swarm", jsonOpts("POST", payload));
-    showToast({ message: res.message || "Swarm 已创建", type: "success" });
+    ok(res.message || "Swarm 已创建");
     store.showCreate = false;
     await store.refreshBoard();
   } catch (err) {
-    showToast({ message: "创建失败: " + err.message, type: "fail" });
+    fail(COPY.fail("创建", err.message));
   } finally {
     submitting.value = false;
   }
