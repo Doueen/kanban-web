@@ -32,10 +32,12 @@ const pickers = reactive({
   workspace: false,
 });
 
-const PRIORITY_COLS = ["P0 普通", "P1", "P2", "P3 最高"];
-const WORKSPACE_COLS = ["scratch", "worktree", "dir"];
-
-const assigneeCols = computed(() => ["未指派", ...store.assignees.map((a) => a.name)]);
+const PRIORITY_COLS = ["P0 普通", "P1", "P2", "P3 最高"].map((t, i) => ({ text: t, value: i }));
+const WORKSPACE_COLS = ["scratch", "worktree", "dir"].map((t) => ({ text: t, value: t }));
+const assigneeCols = computed(() => [
+  { text: "未指派", value: "" },
+  ...store.assignees.map((a) => ({ text: a.name, value: a.name })),
+]);
 
 watch(
   () => store.createPrefill,
@@ -191,7 +193,7 @@ async function submitSwarm() {
         @click="pickers.assignee = true"
       />
       <van-field
-        :model-value="PRIORITY_COLS[form.priority]"
+        :model-value="PRIORITY_COLS[form.priority]?.text"
         label="优先级"
         placeholder="P0 普通"
         is-link
@@ -230,7 +232,7 @@ async function submitSwarm() {
       <van-field v-model="swarm.verifier" label="Verifier" placeholder="评审 profile" clearable />
       <van-field v-model="swarm.synthesizer" label="Synthesizer" placeholder="汇总 profile" clearable />
       <van-field
-        :model-value="PRIORITY_COLS[swarm.priority]"
+        :model-value="PRIORITY_COLS[swarm.priority]?.text"
         label="优先级"
         placeholder="P0 普通"
         is-link
@@ -263,7 +265,7 @@ async function submitSwarm() {
       v-model:show="pickers.priority"
       :columns="PRIORITY_COLS"
       title="选择优先级"
-      @confirm="(v) => { const i = PRIORITY_COLS.indexOf(v.selectedOptions[0]?.text); if (mode === 0) form.priority = i < 0 ? 0 : i; else swarm.priority = i < 0 ? 0 : i; }"
+      @confirm="(v) => { const t = v.selectedOptions[0]?.text; const i = PRIORITY_COLS.findIndex((c) => c.text === t); if (mode === 0) form.priority = i < 0 ? 0 : i; else swarm.priority = i < 0 ? 0 : i; }"
     />
     <van-picker
       v-model:show="pickers.workspace"
