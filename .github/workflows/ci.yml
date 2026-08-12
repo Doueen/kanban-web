@@ -1,0 +1,45 @@
+# M1-6 E11: push/PR → npm ci → lint → vitest → build → pytest
+# CI 不接触生产服务器；build 仅为执行既有构建命令验证 main 可构建（零配置改动，E2 不执行）。
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: web
+
+      - name: lint
+        run: npm run lint
+        working-directory: web
+
+      - name: unit tests
+        run: npm run test:unit
+        working-directory: web
+
+      - name: build (既有构建命令，验证 main 可构建)
+        run: npm run build
+        working-directory: web
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pytest (db.py / kanban_cli.py / scheduler API)
+        run: |
+          pip install pytest fastapi httpx pyyaml
+          python -m pytest tests/ -q
