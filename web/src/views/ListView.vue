@@ -116,25 +116,20 @@ function openMenu(t, e) {
       </div>
 
       <div class="list-toolbar">
-        <van-button
-          icon="checked"
-          size="small"
-          style="flex: 0 0 auto"
-          :type="batchMode ? 'primary' : 'default'"
+        <button
+          class="tb-chip"
+          :class="{ active: batchMode }"
           @click="toggleBatch"
-        >{{ batchMode ? "退出批量" : "批量" }}</van-button>
-        <van-field
-          class="list-assignee"
-          :model-value="store.listAssignee || '全部指派'"
-          label="指派"
-          is-link
-          readonly
-          @click="showAssignee = true"
-        />
+        >
+          ☑ {{ batchMode ? "退出批量" : "批量" }}
+        </button>
+        <button class="tb-chip tb-assignee" @click="showAssignee = true">
+          👤 {{ store.listAssignee || "全部指派" }} ▾
+        </button>
         <van-search v-model="store.search" placeholder="搜索…" shape="round" />
-        <van-button icon="exchange" size="small" style="flex: 0 0 auto" @click="toggleSort">
-          {{ store.sortBy === "status" ? "状态" : store.sortBy === "priority" ? "优先级" : "创建时间" }}
-        </van-button>
+        <button class="tb-chip" @click="toggleSort">
+          ⇅ {{ store.sortBy === "status" ? "状态" : store.sortBy === "priority" ? "优先级" : "创建时间" }}
+        </button>
         <label class="check-label">
           <van-switch v-model="store.listArchived" size="18px" />
           <span>含归档</span>
