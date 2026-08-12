@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useAppStore, vantThemeVars } from "./store";
+import { useAppStore, STATUS_ORDER, STATUS, vantThemeVars } from "./store";
 import { setOnUnauthorized } from "./api";
 
 import LoginScreen from "./components/LoginScreen.vue";
@@ -27,6 +27,35 @@ const NAVS = [
 
 const isMobile = computed(() => store.isMobile);
 const searchDrop = ref(false);
+
+/* ---------- 长按 FAB（P2#14）：400ms → 9 状态「新建到此列」 ---------- */
+const fabSheet = ref(false);
+const FAB_ACTIONS = STATUS_ORDER.map((s) => ({ name: `新建到「${STATUS[s]}」`, status: s }));
+let fabTimer = null;
+let fabSuppress = 0;
+
+function onFabTouchStart() {
+  clearTimeout(fabTimer);
+  fabTimer = setTimeout(() => {
+    fabTimer = null;
+    fabSuppress = Date.now() + 400;
+    try { navigator.vibrate?.(30); } catch (_) { /* */ }
+    fabSheet.value = true;
+  }, 400);
+}
+function onFabTouchEnd() {
+  if (fabTimer) {
+    clearTimeout(fabTimer);
+    fabTimer = null;
+  }
+}
+function onFabClick() {
+  if (Date.now() < fabSuppress) return;
+  store.showCreate = true;
+}
+function onFabAction(item) {
+  store.openCreate({ status: item.status });
+}
 
 const tabIndex = computed({
   get: () => Math.max(0, NAVS.findIndex((n) => n.id === store.view)),
@@ -147,7 +176,23 @@ onUnmounted(() => {
       <van-tabbar-item v-for="n in NAVS" :key="n.id" :icon="n.icon">{{ n.label }}</van-tabbar-item>
     </van-tabbar>
 
-    <button id="fab" title="新建任务" aria-label="新建任务" @click="store.showCreate = true">＋</button>
+    <button
+      id="fab"
+      title="新建任务"
+      aria-label="新建任务"
+      @touchstart="onFabTouchStart"
+      @touchend="onFabTouchEnd"
+      @touchcancel="onFabTouchEnd"
+      @click="onFabClick"
+    >＋</button>
+
+    <van-action-sheet
+      v-model:show="fabSheet"
+      title="新建到此列"
+      :actions="FAB_ACTIONS"
+      close-on-click-action
+      @select="onFabAction"
+    />
 
     <TaskDetail />
     <CreateTaskPopup />

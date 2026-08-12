@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
 import { showToast } from "vant";
-import { useAppStore } from "../store";
+import { useAppStore, STATUS } from "../store";
 import { api, jsonOpts } from "../api";
 
 const store = useAppStore();
@@ -13,6 +13,7 @@ const show = computed({
   },
 });
 
+const createStatus = ref("");
 const mode = ref(0);
 
 const form = reactive({
@@ -39,6 +40,7 @@ const assigneeCols = computed(() => ["未指派", ...store.assignees.map((a) => 
 watch(
   () => store.createPrefill,
   (p) => {
+    createStatus.value = p.status ? STATUS[p.status] || p.status : "";
     if (p.title) form.title = p.title;
     if (p.body) form.body = p.body;
     if (p.parent) form.parent = p.parent;
@@ -169,6 +171,7 @@ async function submitSwarm() {
 <template>
   <van-popup v-model:show="show" position="bottom" round style="height: 88vh">
     <div class="popup-title">新建任务</div>
+    <div v-if="createStatus" class="create-status-note">目标列：{{ createStatus }}</div>
 
     <van-tabs v-model:active="mode" sticky offset-top="0">
       <van-tab title="普通任务" />

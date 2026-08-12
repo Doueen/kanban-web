@@ -1,5 +1,15 @@
 /* shared formatting helpers */
 
+/* 单列看板筛选记忆（kb-board-filter），'all' 时删除 */
+export function persistBoardFilter(v) {
+  try {
+    if (v && v !== "all") localStorage.setItem("kb-board-filter", v);
+    else localStorage.removeItem("kb-board-filter");
+  } catch (_) {
+    /* best-effort */
+  }
+}
+
 export function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",

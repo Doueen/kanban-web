@@ -14,6 +14,13 @@ let lpTimer = null;
 let lpStart = null;
 let suppressClickUntil = 0;
 
+const swipeCell = ref(null);
+
+const avatar = computed(() => {
+  const name = props.task.assignee || "";
+  return name ? name.trim().charAt(0).toUpperCase() : "";
+});
+
 const showSwipe = computed(
   () =>
     store.isMobile &&
@@ -58,8 +65,14 @@ function onClick() {
   store.openDetail(props.task.id);
 }
 
-function quick(action) {
-  store.runAction(props.task.id, action);
+async function quick(action) {
+  swipeCell.value?.close();
+  try {
+    await store.runAction(props.task.id, action);
+    try { navigator.vibrate?.(10); } catch (_) { /* */ }
+  } catch (_) {
+    /* toast handled in store */
+  }
 }
 
 function openMenu(e) {
@@ -80,7 +93,7 @@ function onDragEnd() {
 </script>
 
 <template>
-  <van-swipe-cell :disabled="!showSwipe">
+  <van-swipe-cell :disabled="!showSwipe" ref="swipeCell">
     <div
       class="card"
       :class="['st-' + task.status, { 'long-press': longPressing, dragging: store.draggingId === task.id }]"
@@ -94,29 +107,63 @@ function onDragEnd() {
       @dragstart="onDragStart"
       @dragend="onDragEnd"
     >
-      <div class="card-title">{{ task.title }}</div>
-      <div class="card-meta">
-        <div class="card-tags">
+      <!-- 移动端精简卡片：标题两行截断 + 指派首字母圆 + 优先级 + 快捷操作 -->
+      <template v-if="store.isMobile">
+        <div class="mob-head">
+          <div class="card-title mob-clamp">{{ task.title }}</div>
+          <span v-if="task.assignee" class="mob-avatar" :title="task.assignee">{{ avatar }}</span>
+        </div>
+        <div class="mob-meta">
           <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority">P{{ task.priority }}</span>
-          <span v-if="task.assignee" class="card-assignee" :title="task.assignee">@{{ task.assignee }}</span>
+          <span class="mob-actions">
+            <button
+              v-if="store.mob.quickact && task.status !== 'done' && task.status !== 'archived'"
+              class="card-quick"
+              title="完成"
+              aria-label="完成"
+              @click.stop="quick('complete')"
+            >✓</button>
+            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)">⋯</button>
+          </span>
         </div>
-        <div class="card-tags">
-          <span class="card-id">{{ task.id }}</span>
-          <button
-            v-if="store.mob.quickact && task.status !== 'done' && task.status !== 'archived'"
-            class="card-quick"
-            title="完成"
-            aria-label="完成"
-            @click.stop="quick('complete')"
-          >✓</button>
-          <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)">⋯</button>
+      </template>
+
+      <!-- 桌面端完整信息 -->
+      <template v-else>
+        <div class="card-title">{{ task.title }}</div>
+        <div class="card-meta">
+          <div class="card-tags">
+            <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority">P{{ task.priority }}</span>
+            <span v-if="task.assignee" class="card-assignee" :title="task.assignee">@{{ task.assignee }}</span>
+          </div>
+          <div class="card-tags">
+            <span class="card-id">{{ task.id }}</span>
+            <button
+              v-if="store.mob.quickact && task.status !== 'done' && task.status !== 'archived'"
+              class="card-quick"
+              title="完成"
+              aria-label="完成"
+              @click.stop="quick('complete')"
+            >✓</button>
+            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)">⋯</button>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <template v-if="showSwipe" #right>
-      <van-button square type="success" class="swipe-btn" text="完成" @click="quick('complete')" />
-      <van-button square type="warning" class="swipe-btn" text="归档" @click="quick('archive')" />
+      <button class="swipe-act swipe-complete" @click="quick('complete')">
+        <van-icon name="passed" />
+        <span>完成</span>
+      </button>
+      <button class="swipe-act swipe-archive" @click="quick('archive')">
+        <van-icon name="folder-o" />
+        <span>归档</span>
+      </button>
+      <button class="swipe-act swipe-block" @click="quick('block')">
+        <van-icon name="warning-o" />
+        <span>阻塞</span>
+      </button>
     </template>
   </van-swipe-cell>
 </template>

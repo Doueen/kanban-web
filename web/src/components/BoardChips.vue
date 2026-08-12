@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useAppStore } from "../store";
+import { persistBoardFilter } from "../utils";
 
 const store = useAppStore();
 
@@ -13,6 +14,7 @@ const chips = computed(() => [
 
 function select(v) {
   store.boardFilter = v;
+  persistBoardFilter(v);
 }
 </script>
 

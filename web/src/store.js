@@ -251,7 +251,15 @@ export const useAppStore = defineStore("app", {
     boards: [],
     currentBoard: null,
     search: "",
-    boardFilter: "all",
+    boardFilter: (() => {
+      try {
+        if (typeof matchMedia === "function" && matchMedia("(max-width: 619px)").matches) {
+          const saved = localStorage.getItem("kb-board-filter");
+          if (saved) return saved;
+        }
+      } catch (_) { /* */ }
+      return "all";
+    })(),
     listStatus: "",
     listAssignee: "",
     listArchived: false,
