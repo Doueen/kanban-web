@@ -1,20 +1,25 @@
 <script setup>
 import { computed } from "vue";
 import { useAppStore } from "../store";
-import { persistBoardFilter } from "../utils";
 
 const store = useAppStore();
 
-const chips = computed(() => [
-  { value: "all", label: "全部" },
-  ...(store.board
-    ? store.board.statuses.map((s) => ({ value: s.status, label: s.label }))
-    : []),
-]);
+const chips = computed(() => {
+  if (!store.board) return [];
+  const total = store.board.statuses.reduce((s, c) => s + (c.count || 0), 0);
+  return [
+    { value: "all", label: "全部", count: total },
+    ...store.board.statuses.map((s) => ({ value: s.status, label: s.label, count: s.count || 0 })),
+  ];
+});
 
 function select(v) {
   store.boardFilter = v;
-  persistBoardFilter(v);
+  if (v !== "all") {
+    try { localStorage.setItem("kb-board-filter", v); } catch (_) { /* */ }
+  } else {
+    try { localStorage.removeItem("kb-board-filter"); } catch (_) { /* */ }
+  }
 }
 </script>
 
@@ -26,6 +31,9 @@ function select(v) {
       class="chip"
       :class="{ active: store.boardFilter === c.value }"
       @click="select(c.value)"
-    >{{ c.label }}</button>
+    >
+      <span class="chip-label">{{ c.label }}</span>
+      <span v-if="c.count > 0" class="chip-count">{{ c.count > 99 ? "99+" : c.count }}</span>
+    </button>
   </div>
 </template>

@@ -1,6 +1,6 @@
 /* Pinia store — board/tasks/filter/theme/auth/折叠状态/移动端开关/全局弹层。 */
 import { defineStore } from "pinia";
-import { showToast } from "vant";
+import { showConfirmDialog, showToast } from "vant";
 import { api, apiText, jsonOpts } from "./api";
 
 export const STATUS_ORDER = [
@@ -426,6 +426,18 @@ export const useAppStore = defineStore("app", {
 
     /* ---------- task actions ---------- */
     async runAction(id, action, note) {
+      if (action === "archive") {
+        try {
+          await showConfirmDialog({
+            title: "归档任务",
+            message: "确定要归档该任务吗？归档后可在列表页勾选「含归档」查看。",
+            confirmButtonText: "归档",
+            confirmButtonColor: "#ff5c6c",
+          });
+        } catch (_) {
+          return null; // 用户取消
+        }
+      }
       if (!note && action === "block") note = "via web";
       if (!note && action === "schedule") note = "scheduled via web";
       if (!note && ["promote", "request-changes"].includes(action)) note = "via web";

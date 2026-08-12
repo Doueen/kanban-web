@@ -22,11 +22,10 @@ function onSelect(item) {
 
 <template>
   <van-action-sheet
-    :model-value="store.menuVisible"
+    v-model:show="store.menuVisible"
     :actions="actions"
     cancel-text="取消"
     description="任务操作"
-    @update:model-value="(v) => (v ? null : store.closeMenu())"
     @select="onSelect"
     @cancel="store.closeMenu()"
   />
