@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { showDialog } from "vant";
 import { useAppStore, STATUS_ORDER, STATUS, vantThemeVars } from "./store";
 import { api, jsonOpts, setOnUnauthorized } from "./api";
 import { ok, fail, COPY } from "./feedback";
@@ -30,6 +29,9 @@ const NAVS = [
 const isMobile = computed(() => store.isMobile);
 const searchDrop = ref(false);
 
+/* M1-5 E9: 快捷键说明面板（`?` 打开，Esc 关闭） */
+const helpShow = ref(false);
+
 /* ---------- 顶栏 board 快速切换 ---------- */
 const boardSheet = ref(false);
 const boardActions = ref([]);
@@ -38,7 +40,9 @@ const boardSwitching = ref(false);
 async function openBoardSwitch() {
   try {
     await store.loadBoards();
-  } catch (_) { /* toast below */ }
+  } catch (_) {
+    /* toast below */
+  }
   const cur = store.currentBoard ? store.currentBoard.slug : "";
   boardActions.value = store.boards.map((b) => ({
     name: b.slug === cur ? `${b.name || b.slug}（当前）` : b.name || b.slug,
@@ -75,7 +79,11 @@ function onFabTouchStart() {
   fabTimer = setTimeout(() => {
     fabTimer = null;
     fabSuppress = Date.now() + 400;
-    try { navigator.vibrate?.(30); } catch (_) { /* */ }
+    try {
+      navigator.vibrate?.(30);
+    } catch (_) {
+      /* */
+    }
     fabSheet.value = true;
   }, 400);
 }
@@ -94,7 +102,11 @@ function onFabAction(item) {
 }
 
 const tabIndex = computed({
-  get: () => Math.max(0, NAVS.findIndex((n) => n.id === store.view)),
+  get: () =>
+    Math.max(
+      0,
+      NAVS.findIndex((n) => n.id === store.view)
+    ),
   set: (i) => {
     if (i >= 0 && NAVS[i]) store.setView(NAVS[i].id);
   },
@@ -164,10 +176,23 @@ function isTypingTarget(t) {
 async function onGlobalKeydown(e) {
   if (!store.authed) return;
   if (e.key === "Escape") {
-    if (store.detailId) { e.preventDefault(); store.closeDetail(); }
-    else if (store.menuVisible) { e.preventDefault(); store.closeMenu(); }
-    else if (store.moveTask) { e.preventDefault(); store.closeMove(); }
-    else if (store.showCreate) { e.preventDefault(); store.showCreate = false; }
+    /* F5: Esc 依次关闭 快捷键面板 → 详情 → 菜单 → 移动到 → 创建弹窗 */
+    if (helpShow.value) {
+      e.preventDefault();
+      helpShow.value = false;
+    } else if (store.detailId) {
+      e.preventDefault();
+      store.closeDetail();
+    } else if (store.menuVisible) {
+      e.preventDefault();
+      store.closeMenu();
+    } else if (store.moveTask) {
+      e.preventDefault();
+      store.closeMove();
+    } else if (store.showCreate) {
+      e.preventDefault();
+      store.showCreate = false;
+    }
     return;
   }
   if (isTypingTarget(e.target)) return;
@@ -181,11 +206,7 @@ async function onGlobalKeydown(e) {
     if (input) input.focus();
   } else if (e.key === "?") {
     e.preventDefault();
-    await showDialog({
-      title: "键盘快捷键",
-      message: SHORTCUT_HELP.map(([k, d]) => `【${k}】 ${d}`).join("\n"),
-      confirmButtonText: "知道了",
-    });
+    helpShow.value = true;
   }
 }
 
@@ -234,7 +255,8 @@ onUnmounted(() => {
           aria-label="切换看板"
           @click.stop="openBoardSwitch"
           @keydown.enter.stop="openBoardSwitch"
-        >{{ store.currentBoard ? store.currentBoard.name : "…" }} ▾</span>
+          >{{ store.currentBoard ? store.currentBoard.name : "…" }} ▾</span
+        >
       </div>
 
       <nav class="top-nav" aria-label="主导航">
@@ -244,11 +266,21 @@ onUnmounted(() => {
           class="top-nav-btn"
           :class="{ active: store.view === n.id }"
           @click="store.setView(n.id)"
-        >{{ n.label }}</button>
+        >
+          {{ n.label }}
+        </button>
       </nav>
 
       <div class="controls">
-        <button v-if="isMobile" class="icon-btn" title="搜索" aria-label="搜索" @click="searchDrop = !searchDrop">⌕</button>
+        <button
+          v-if="isMobile"
+          class="icon-btn"
+          title="搜索"
+          aria-label="搜索"
+          @click="searchDrop = !searchDrop"
+        >
+          ⌕
+        </button>
         <van-search
           v-else
           v-model="store.search"
@@ -257,8 +289,12 @@ onUnmounted(() => {
           @update:model-value="onSearch"
         />
         <ThemeSwitcher />
-        <button v-if="!isMobile" class="icon-btn" title="刷新" aria-label="刷新" @click="doRefresh">⟳</button>
-        <span v-if="store.lastSyncedAt && !isMobile" class="synced-at" title="最近一次成功同步时间">更新于 {{ fmtClock(store.lastSyncedAt) }}</span>
+        <button v-if="!isMobile" class="icon-btn" title="刷新" aria-label="刷新" @click="doRefresh">
+          ⟳
+        </button>
+        <span v-if="store.lastSyncedAt && !isMobile" class="synced-at" title="最近一次成功同步时间"
+          >更新于 {{ fmtClock(store.lastSyncedAt) }}</span
+        >
       </div>
 
       <div v-if="searchDrop" class="search-drop">
@@ -278,7 +314,10 @@ onUnmounted(() => {
       <span class="net-banner-sub">恢复联网后自动同步</span>
     </div>
     <div v-else-if="store.boardError" class="net-banner warn" role="alert">
-      <span>⚠ 数据刷新失败 · 最后成功于 {{ store.lastSyncedAt ? fmtClock(store.lastSyncedAt) : "—" }}</span>
+      <span
+        >⚠ 数据刷新失败 · 最后成功于
+        {{ store.lastSyncedAt ? fmtClock(store.lastSyncedAt) : "—" }}</span
+      >
       <button class="retry-btn" @click="store.refreshBoard(true)">重试</button>
     </div>
 
@@ -301,7 +340,9 @@ onUnmounted(() => {
       @touchend="onFabTouchEnd"
       @touchcancel="onFabTouchEnd"
       @click="onFabClick"
-    >＋</button>
+    >
+      ＋
+    </button>
 
     <van-action-sheet
       v-model:show="fabSheet"
@@ -325,7 +366,57 @@ onUnmounted(() => {
     <MoveSheet />
     <TaskMenu />
     <Modals />
+
+    <!-- M1-5 E9: 快捷键说明面板（`?` 打开，Esc 关闭；van-dialog 自带焦点圈定） -->
+    <van-dialog
+      v-model:show="helpShow"
+      title="键盘快捷键"
+      :show-cancel-button="false"
+      confirm-button-text="知道了"
+      close-on-click-overlay
+      class="help-dialog"
+    >
+      <div class="help-panel">
+        <div v-for="([k, d], i) in SHORTCUT_HELP" :key="i" class="help-row">
+          <kbd class="help-key">{{ k }}</kbd>
+          <span class="help-desc">{{ d }}</span>
+        </div>
+      </div>
+    </van-dialog>
   </van-config-provider>
 
   <LoginScreen v-else />
 </template>
+
+<style scoped>
+/* 快捷键说明面板：kbd 键帽 + 说明行；样式随主题变量（追加覆盖，不重写既有选择器） */
+.help-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 20px 22px;
+}
+.help-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.help-key {
+  flex: none;
+  min-width: 46px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text, #f7f8f8) 22%, transparent);
+  border-bottom-width: 2px;
+  background: color-mix(in srgb, var(--text, #f7f8f8) 6%, transparent);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  text-align: center;
+  color: var(--accent, #5ff0e0);
+}
+.help-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text, #f7f8f8);
+}
+</style>
