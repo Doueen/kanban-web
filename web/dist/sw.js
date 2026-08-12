@@ -1,5 +1,5 @@
 /* Hermes Kanban Service Worker — 网络优先 + 缓存回退（App 壳） */
-const CACHE = "kanban-v2";
+const CACHE = "kanban-v3";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

@@ -56,7 +56,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
       </button>
     </div>
 
-    <!-- 移动端：van-action-sheet（组件库标准底部面板，无自绘遮挡/截断问题） -->
+    <!-- 移动端：van-action-sheet（显式 teleport 到 body，脱离 sticky 顶栏包含块） -->
     <van-action-sheet
       v-if="isMobile"
       v-model:show="show"
@@ -64,6 +64,9 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
       title="主题"
       cancel-text="取消"
       close-on-click-action
+      teleport="body"
+      style="z-index: 4000"
+      :style="{ '--van-action-sheet-z-index': 4000, '--van-popup-z-index': 4000 }"
       @select="onSheetSelect"
     />
   </div>

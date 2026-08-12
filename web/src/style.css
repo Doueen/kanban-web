@@ -1176,3 +1176,10 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
   border-color: color-mix(in srgb, var(--accent) 65%, transparent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
+
+/* ---------- action-sheet 高度修复 ----------
+   Vant 的 max-height: 80% 基于父容器（body）——页面可滚动时 body 高度 = 内容高度，
+   80% 失效 → content flex 塌陷（高度 0）→ 选项溢出裁剪 → 弹层"显示不全"。
+   改用 vh（视口）单位强制约束，所有 action-sheet 生效。 */
+.van-action-sheet { max-height: 70vh !important; }
+.van-action-sheet__content { flex: 1 1 auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
