@@ -15,9 +15,10 @@ from pathlib import Path
 import yaml
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 import db
 import kanban_cli
@@ -33,6 +34,8 @@ if not WEB_PASS:
     print("[kanban-web] KANBAN_WEB_USER=%s KANBAN_WEB_PASS=%s" % (WEB_USER, WEB_PASS), file=sys.stderr)
 
 app = FastAPI(title="Hermes Kanban Web", docs_url=None, redoc_url=None, openapi_url=None)
+# M1-1 E1: HTTP 压缩（直连 9120 生效；域名走 nginx 由 nginx gzip 处理）
+app.add_middleware(GZipMiddleware, minimum_size=500)
 security = HTTPBasic(auto_error=False)
 
 
@@ -96,11 +99,16 @@ async def _json_body(request, required=False):
 # --- read endpoints ---------------------------------------------------------
 
 @app.get("/api/board", dependencies=[Depends(require_auth)])
-def api_board():
-    return {
-        "statuses": db.get_board(),
-        "assignees": db.get_assignees(),
-    }
+def api_board(request: Request):
+    # M1-3 E6: 轻量变更指纹 → ETag；If-None-Match 命中 → 304 零传输
+    etag = db.board_fingerprint()
+    inm = (request.headers.get("if-none-match") or "").strip()
+    if inm and inm == '"%s"' % etag:
+        return Response(status_code=304)
+    return JSONResponse(
+        {"statuses": db.get_board(), "assignees": db.get_assignees()},
+        headers={"ETag": '"%s"' % etag},
+    )
 
 
 @app.get("/api/tasks", dependencies=[Depends(require_auth)])
@@ -151,20 +159,18 @@ def api_download(path: str = Query(...)):
 
 @app.get("/api/boards", dependencies=[Depends(require_auth)])
 def api_boards():
-    return _run_json(kanban_cli.boards_list, include_archived=True)
+    # M1-3 E4: 内存 TTL 缓存（300s），轮询路径不触发 CLI 子进程
+    return JSONResponse(db.boards_list_cached())
 
 
 @app.get("/api/boards/current", dependencies=[Depends(require_auth)])
 def api_current_board(force: int = 0):
     slug = db.current_board_slug(force=bool(force))
     name = None
-    try:
-        for b in _run_json(kanban_cli.boards_list, include_archived=True):
-            if b.get("slug") == slug:
-                name = b.get("name") or slug
-                break
-    except HTTPException:
-        pass
+    for b in db.boards_list_cached():
+        if b.get("slug") == slug:
+            name = b.get("name") or slug
+            break
     return {"slug": slug, "name": name or slug}
 
 
@@ -174,19 +180,22 @@ async def api_create_board(request: Request):
     slug = (body.get("slug") or "").strip()
     if not slug:
         raise HTTPException(status_code=400, detail="slug is required")
-    return _run_write(
+    res = _run_write(
         kanban_cli.boards_create, slug,
         name=(body.get("name") or "").strip() or None,
         description=(body.get("description") or "").strip() or None,
         icon=(body.get("icon") or "").strip() or None,
         color=(body.get("color") or "").strip() or None,
     )
+    db.invalidate_boards_cache()
+    return res
 
 
 @app.post("/api/boards/{slug}/switch", dependencies=[Depends(require_auth)])
 def api_board_switch(slug: str):
     res = _run_write(kanban_cli.boards_switch, slug)
     db.refresh_current_board()
+    db.invalidate_boards_cache()
     return res
 
 
@@ -206,6 +215,7 @@ def api_board_restore(slug: str):
         dst = boards_dir / f"{slug}-restored"
     shutil.move(str(src), str(dst))
     db.refresh_current_board()
+    db.invalidate_boards_cache()
     return {"ok": True, "message": f"已恢复 board「{slug}」"}
 
 
@@ -215,21 +225,27 @@ async def api_rename_board(slug: str, request: Request):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    return _run_write(kanban_cli.boards_rename, slug, name)
+    res = _run_write(kanban_cli.boards_rename, slug, name)
+    db.invalidate_boards_cache()
+    return res
 
 
 @app.post("/api/boards/{slug}/workdir", dependencies=[Depends(require_auth)])
 async def api_set_board_workdir(slug: str, request: Request):
     body = await _json_body(request)
     path = (body.get("path") or "").strip() or None
-    return _run_write(kanban_cli.boards_set_workdir, slug, path)
+    res = _run_write(kanban_cli.boards_set_workdir, slug, path)
+    db.invalidate_boards_cache()
+    return res
 
 
 @app.delete("/api/boards/{slug}", dependencies=[Depends(require_auth)])
 async def api_delete_board(slug: str, request: Request):
     body = await _json_body(request)
     delete = bool(body.get("delete")) if isinstance(body, dict) else False
-    return _run_write(kanban_cli.boards_rm, slug, delete=delete)
+    res = _run_write(kanban_cli.boards_rm, slug, delete=delete)
+    db.invalidate_boards_cache()
+    return res
 
 
 # --- write endpoints --------------------------------------------------------
@@ -575,12 +591,20 @@ def api_assignees():
 
 # --- static frontend --------------------------------------------------------
 
-# HTML 不缓存（JS/CSS 有 hash 不受影响，但 index.html 需要每次重新验证）
+# M1-1 E3: hashed 资源长缓存（immutable）；HTML/SW 维持 no-cache
 @app.middleware("http")
-async def no_cache_index(request, call_next):
+async def cache_headers(request, call_next):
     response = await call_next(request)
-    if request.url.path in ("/", "/index.html", "/sw.js"):
+    path = request.url.path
+    if path in ("/", "/index.html", "/sw.js"):
+        # HTML 不缓存（JS/CSS 有 hash 不受影响，但 index.html 需要每次重新验证）
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    elif (
+        path.startswith("/assets/")
+        or (path.startswith("/icon-") and path.endswith(".png"))
+        or path == "/manifest.webmanifest"
+    ):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 app.mount("/", StaticFiles(directory=str(BASE_DIR / "web" / "dist"), html=True), name="static")

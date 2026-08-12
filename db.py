@@ -13,16 +13,21 @@ import json
 import os
 import sqlite3
 import time
+from pathlib import Path
 
 import kanban_cli
 
 DEFAULT_DB_PATH = os.environ.get("KANBAN_DB", "/root/.hermes/kanban.db")
 BOARDS_ROOT = os.environ.get("KANBAN_BOARDS_ROOT", "/root/.hermes/kanban/boards")
 DEFAULT_BOARD_SLUG = "default"
-BOARD_CACHE_TTL = 30.0
+# M1-3 E4: TTL 30s → 300s（轮询不再每次 CLI 探活）
+BOARD_CACHE_TTL = 300.0
+BOARDS_CACHE_TTL = 300.0
 
 _current_board = None
 _current_board_ts = 0.0
+_boards_cache = None
+_boards_cache_ts = 0.0
 
 STATUS_LABELS = {
     "triage": "待梳理",
@@ -48,27 +53,21 @@ TASK_COLS = (
 
 # --- board resolution -------------------------------------------------------
 
-def _parse_show_slug(stdout):
-    """Extract the active board slug from `hermes kanban boards show`."""
-    for line in (stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.lower().startswith("current board"):
-            return line.split(":", 1)[-1].strip() or None
-    return None
-
-
 def current_board_slug(force=False):
-    """Active board slug, cached for BOARD_CACHE_TTL seconds."""
+    """Active board slug, cached for BOARD_CACHE_TTL seconds.
+
+    M1-3 E4: 文件系统直读（~/.hermes/kanban/current 文本文件），
+    轮询路径不再产生 CLI 子进程。force=True（手动刷新/切换）时强制重读。
+    """
     global _current_board, _current_board_ts
     now = time.time()
     if not force and _current_board is not None and (now - _current_board_ts) < BOARD_CACHE_TTL:
         return _current_board
     slug = None
     try:
-        proc = kanban_cli.run_cli(["boards", "show"])
-        slug = _parse_show_slug(proc.stdout)
+        current_file = Path(BOARDS_ROOT).parent / "current"
+        if current_file.is_file():
+            slug = current_file.read_text(encoding="utf-8").strip() or None
     except Exception:
         slug = None
     if not slug:
@@ -81,6 +80,32 @@ def current_board_slug(force=False):
 def refresh_current_board():
     """Force-re-read the active board (call after a successful switch)."""
     return current_board_slug(force=True)
+
+
+def boards_list_cached(include_archived=True, force=False):
+    """CLI `boards list --json --all` 输出，内存 TTL 缓存（BOARDS_CACHE_TTL）。
+
+    M1-3 E4: boards 列表加内存 TTL；写操作（switch/create/rename/workdir/
+    rm/restore）后由 invalidate_boards_cache() 主动失效。
+    """
+    global _boards_cache, _boards_cache_ts
+    now = time.time()
+    if not force and _boards_cache is not None and (now - _boards_cache_ts) < BOARDS_CACHE_TTL:
+        return _boards_cache
+    try:
+        proc = kanban_cli.boards_list(include_archived=include_archived)
+        data = json.loads(proc.stdout or "[]")
+    except Exception:
+        data = _boards_cache or []
+    _boards_cache = data
+    _boards_cache_ts = now
+    return data
+
+
+def invalidate_boards_cache():
+    global _boards_cache, _boards_cache_ts
+    _boards_cache = None
+    _boards_cache_ts = 0.0
 
 
 def current_db_path():
@@ -169,6 +194,19 @@ def get_assignees(db_path=None):
             "GROUP BY assignee ORDER BY assignee"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def board_fingerprint(db_path=None):
+    """轻量变更指纹（M1-3 E6）：tasks/comments/events/attachments 的
+    MAX(created_at) UNION，排除 heartbeat 事件。用于 /api/board 的 ETag。"""
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT MAX(created_at) FROM tasks "
+            "UNION SELECT MAX(created_at) FROM task_comments "
+            "UNION SELECT MAX(created_at) FROM task_events WHERE kind != 'heartbeat' "
+            "UNION SELECT MAX(created_at) FROM task_attachments"
+        ).fetchall()
+    return "|".join(str(r[0] or 0) for r in rows)
 
 
 def get_board(db_path=None):

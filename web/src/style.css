@@ -907,11 +907,11 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
 }
 
 /* ---------- reduced motion ---------- */
+/* 降级策略（验收要求）：仅保留透明度变化，其余动画/位移/缩放全部关闭 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: opacity 0.15s ease !important;
   }
   .bg-grid { animation: none !important; }
 }
@@ -1256,3 +1256,127 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
 .list-toolbar { gap: 8px; }
 .list-toolbar .van-search { flex: 1 1 auto; max-width: 360px; }
 .check-label { margin-left: 2px; }
+
+/* ============================================================
+   动效优化批次（t_935b2494）—— 追加块，不改写既有选择器
+   ============================================================ */
+
+/* ---------- 卡片列表过渡（TransitionGroup） ----------
+   进入：沿用卡片自身 cardIn（含 stagger，见 .card）
+   移动：FLIP —— 拖拽/删除/刷新后剩余卡片平滑让位（transform，无布局抖动）
+   离开：原地淡出（absolute 钉位由 BoardColumn onCardBeforeLeave 提供 rect），
+   兄弟卡片同时 FLIP 上移，无"先留缝再跳"的抖动 */
+.card-move { transition: transform 0.25s ease; }
+.card-leave-active {
+  position: absolute;
+  z-index: 3;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.card-leave-to { opacity: 0; transform: scale(0.97); }
+/* 虚拟滚动窗口化时使用 card-virt 名字——该组类名下无任何规则 = 过渡关闭 */
+.no-anim { animation: none !important; }
+
+/* ---------- 拖拽目标反馈 ---------- */
+.column { transition: border-color 0.15s, box-shadow 0.15s; }
+.column.drag-invalid {
+  border-color: #ff5c6c;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #ff5c6c 50%, transparent),
+    0 0 18px color-mix(in srgb, #ff5c6c 30%, transparent);
+}
+.column.drag-invalid .column-head .dot { box-shadow: 0 0 12px #ff5c6c; }
+.column.drag-over .column-body {
+  background: color-mix(in srgb, var(--accent) 3.5%, transparent);
+}
+
+/* ---------- 拖拽幽灵卡（跟手） ---------- */
+.drag-ghost {
+  position: fixed; top: 0; left: 0; z-index: 9999;
+  pointer-events: none; user-select: none;
+  display: flex; align-items: center; gap: 8px;
+  width: max-content; max-width: 240px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    0 0 18px color-mix(in srgb, var(--accent) 22%, transparent);
+  padding: 9px 14px 9px 18px;
+  font-size: 13px; color: var(--text);
+  opacity: 0.95;
+  will-change: transform;
+  overflow: hidden;
+}
+.drag-ghost::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 3px; background: var(--c, var(--accent));
+}
+.drag-ghost .dg-title {
+  font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.drag-ghost .dg-badge {
+  font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none;
+}
+
+/* ---------- hover / focus 反馈 ---------- */
+.card:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+  border-color: var(--accent);
+}
+.chip:focus-visible,
+.tb-chip:focus-visible,
+.col-fold:focus-visible,
+.list-row:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.list-row { transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s; }
+.list-row:focus-visible { border-color: var(--accent); }
+
+/* ========== M1 护栏：连接状态横幅 + 同步时间 ========== */
+.net-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 30;
+  animation: netIn 0.25s ease-out;
+}
+.net-banner.offline {
+  background: color-mix(in srgb, var(--danger, #ff5c6c) 14%, var(--bg));
+  color: var(--text);
+}
+.net-banner.warn {
+  background: color-mix(in srgb, var(--warn, #ffb86c) 14%, var(--bg));
+  color: var(--text);
+}
+.net-banner-sub { color: var(--muted); font-size: 12px; }
+.retry-btn {
+  min-width: 56px;
+  min-height: 32px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.retry-btn:hover { border-color: var(--accent); color: var(--accent); }
+.synced-at {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+@keyframes netIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .net-banner { animation: none; }
+}

@@ -19,10 +19,16 @@ function handle401() {
   if (_on401) _on401();
 }
 
+/* M1-3 E6: per-path ETag 注册表（/api/board 条件请求用） */
+const _etags = new Map();
+
 export async function api(path, opts = {}) {
   const h = authHeader();
-  if (h) opts.headers = { ...(opts.headers || {}), Authorization: h };
-  const res = await fetch(path, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (h) headers.Authorization = h;
+  if (opts.etag && _etags.has(path)) headers["If-None-Match"] = _etags.get(path);
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 304) return null; // ETag 命中：零传输零刷新
   let data = null;
   try {
     data = await res.json();
@@ -36,6 +42,10 @@ export async function api(path, opts = {}) {
   if (!res.ok) {
     const detail = (data && (data.detail || data.message)) || `HTTP ${res.status}`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  if (opts.etag) {
+    const et = res.headers.get("ETag");
+    if (et) _etags.set(path, et);
   }
   return data;
 }

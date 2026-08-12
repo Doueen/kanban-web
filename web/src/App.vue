@@ -113,9 +113,24 @@ function closeSearchDrop() {
   store.search = "";
 }
 async function doRefresh() {
-  await store.refreshBoard();
+  await store.refreshBoard(true);
   if (store.view === "stats") store.eventSince = 0;
   if (store.view === "stats") await store.pollEvents();
+}
+
+/* M1-4 E7: 「更新于 xx:xx」 */
+function fmtClock(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* M1-4 E7: 断网横幅 + 恢复立即刷新（监听在 onMounted 注册） */
+function onOffline() {
+  store.setOnline(false);
+}
+function onOnline() {
+  store.setOnline(true);
 }
 
 function onVis() {
@@ -143,10 +158,14 @@ onMounted(() => {
     store.loadBoards();
   }
   document.addEventListener("visibilitychange", onVis);
+  window.addEventListener("offline", onOffline);
+  window.addEventListener("online", onOnline);
 });
 
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", onVis);
+  window.removeEventListener("offline", onOffline);
+  window.removeEventListener("online", onOnline);
   store.stopPolling();
   store.stopEventPolling();
 });
@@ -195,6 +214,7 @@ onUnmounted(() => {
         />
         <ThemeSwitcher />
         <button v-if="!isMobile" class="icon-btn" title="刷新" aria-label="刷新" @click="doRefresh">⟳</button>
+        <span v-if="store.lastSyncedAt && !isMobile" class="synced-at" title="最近一次成功同步时间">更新于 {{ fmtClock(store.lastSyncedAt) }}</span>
       </div>
 
       <div v-if="searchDrop" class="search-drop">
@@ -207,6 +227,16 @@ onUnmounted(() => {
         <button class="btn" @click="closeSearchDrop">取消</button>
       </div>
     </header>
+
+    <!-- M1-4 E7: 连接状态横幅（断网 / 刷新失败） -->
+    <div v-if="!store.online" class="net-banner offline" role="alert">
+      <span>⚠ 网络已断开 · 数据暂停更新</span>
+      <span class="net-banner-sub">恢复联网后自动同步</span>
+    </div>
+    <div v-else-if="store.boardError" class="net-banner warn" role="alert">
+      <span>⚠ 数据刷新失败 · 最后成功于 {{ store.lastSyncedAt ? fmtClock(store.lastSyncedAt) : "—" }}</span>
+      <button class="retry-btn" @click="store.refreshBoard(true)">重试</button>
+    </div>
 
     <main id="main">
       <BoardView v-if="store.view === 'board'" />

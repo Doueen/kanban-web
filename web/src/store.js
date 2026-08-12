@@ -1,7 +1,11 @@
 /* Pinia store — board/tasks/filter/theme/auth/折叠状态/移动端开关/全局弹层。 */
 import { defineStore } from "pinia";
-import { showConfirmDialog, showToast } from "vant";
 import { api, apiText, jsonOpts } from "./api";
+import { ok, fail, confirm, loading, COPY } from "./feedback";
+
+/* M1-2 E5: refreshBoard in-flight 去重 + 单调序号竞态守卫 */
+let _boardSeq = 0;
+let _boardInFlight = null;
 
 export const STATUS_ORDER = [
   "triage", "todo", "ready", "running", "blocked", "scheduled", "review", "done", "archived",
@@ -275,6 +279,10 @@ export const useAppStore = defineStore("app", {
     detailOpts: {},
     events: [],
     eventSince: 0,
+    /* M1-4 E7: 刷新失败可见化 + 连接状态 */
+    boardError: "",
+    lastSyncedAt: null,
+    online: typeof navigator !== "undefined" ? navigator.onLine !== false : true,
     theme: "linear",
     mob: { chips: true, swipe: true, autofold: true, longpress: true, indicator: true, quickact: true },
     hiddenChips: (() => {
@@ -422,24 +430,48 @@ export const useAppStore = defineStore("app", {
     },
 
     /* ---------- data ---------- */
-    async refreshBoard() {
+    /* M1-2 E5: 执行中重复调用返回同一 Promise；force 时绕过去重（手动刷新）。
+       M1-3 E4: 普通轮询不带 force=1；仅手动刷新/切换带 force。 */
+    async refreshBoard(force = false) {
       if (!this.authed) return;
+      if (_boardInFlight && !force) return _boardInFlight;
+      const p = this._fetchBoard(force);
+      _boardInFlight = p;
+      try {
+        return await p;
+      } finally {
+        if (_boardInFlight === p) _boardInFlight = null;
+      }
+    },
+    async _fetchBoard(force) {
+      const seq = ++_boardSeq;
       try {
         const [data, cur] = await Promise.all([
-          api("/api/board"),
-          api("/api/boards/current?force=1"),
+          api("/api/board", { etag: true }),
+          api("/api/boards/current" + (force ? "?force=1" : "")),
         ]);
-        this.board = data;
-        this.assignees = data.assignees || [];
-        if (this.boardFilter !== "all" && !data.statuses.some((c) => c.status === this.boardFilter)) {
-          this.boardFilter = "all";
+        if (seq !== _boardSeq) return; // 竞态守卫：已有更新的请求，过期响应丢弃
+        if (data) {
+          /* 304（ETag 命中）→ data === null，board 未变化，跳过赋值 */
+          this.board = data;
+          this.assignees = data.assignees || [];
+          if (this.boardFilter !== "all" && !data.statuses.some((c) => c.status === this.boardFilter)) {
+            this.boardFilter = "all";
+          }
         }
         /* 后台/CLI 切换 board 同步：左上角标题及时更新 */
         if (!this.currentBoard || cur.slug !== this.currentBoard.slug) {
           await this.loadBoards();
         }
+        if (seq !== _boardSeq) return;
+        this.boardError = "";
+        this.lastSyncedAt = Date.now();
       } catch (err) {
-        if (err.message !== "Unauthorized") console.error("refreshBoard:", err.message);
+        if (seq !== _boardSeq) return;
+        if (err.message !== "Unauthorized") {
+          console.error("refreshBoard:", err.message);
+          this.boardError = err.message;
+        }
       }
     },
     async loadBoards() {
@@ -469,47 +501,34 @@ export const useAppStore = defineStore("app", {
     /* ---------- task actions ---------- */
     async runAction(id, action, note) {
       if (action === "archive") {
-        try {
-          await showConfirmDialog({
-            title: "归档任务",
-            message: "确定要归档该任务吗？归档后可在列表页勾选「含归档」查看。",
-            confirmButtonText: "归档",
-            confirmButtonColor: "#ff5c6c",
-          });
-        } catch (_) {
-          return null; // 用户取消
-        }
+        const c = COPY.confirm.archiveTask;
+        const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText });
+        if (!confirmed) return null; // 用户取消，静默
       }
       if (!note && action === "block") note = "via web";
       if (!note && action === "schedule") note = "scheduled via web";
       if (!note && ["promote", "request-changes"].includes(action)) note = "via web";
       try {
         const res = await api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action, note }));
-        showToast({ message: res.message || actionLabel(action) || "操作完成", type: "success" });
+        ok(res.message || actionLabel(action) || "操作完成");
         await this.refreshBoard();
         if (this.detailId) await this.openDetail(this.detailId);
         return res;
       } catch (err) {
-        showToast({ message: "操作失败: " + err.message, type: "fail" });
+        fail(COPY.fail("操作", err.message));
         throw err;
       }
     },
     async runExtended(id, kind, payload = {}) {
-      const loading = {
-        specify: "AI 细化中…可能需要 1-3 分钟",
-        decompose: "AI 分解中…可能需要 1-3 分钟",
-        claim: "认领中…",
-        heartbeat: "发送心跳中…",
-      };
-      showToast({ message: loading[kind] || "处理中…", type: "loading", duration: 12000, forbidClick: false });
+      loading(COPY.misc.loading[kind] || COPY.misc.loading.default);
       try {
         const res = await api(`/api/tasks/${encodeURIComponent(id)}/${kind}`, jsonOpts("POST", payload));
-        showToast({ message: res.message || actionLabel(kind) || "完成", type: "success" });
+        ok(res.message || actionLabel(kind) || "完成");
         await this.refreshBoard();
         if (this.detailId) await this.openDetail(this.detailId);
         return res;
       } catch (err) {
-        showToast({ message: "失败: " + err.message, type: "fail" });
+        fail(COPY.failShort(err.message));
         throw err;
       }
     },
@@ -562,12 +581,22 @@ export const useAppStore = defineStore("app", {
     /* ---------- polling ---------- */
     startPolling() {
       if (this.boardTimer) return;
+      /* M1-3 E6: 轮询 30s → 60s（ETag 条件请求降频）；
+         M1-4 E7: 断网时暂停轮询 */
       this.boardTimer = setInterval(() => {
-        if (!document.hidden && this.authed) this.refreshBoard();
-      }, 30000);
+        if (!document.hidden && this.authed && this.online) this.refreshBoard();
+      }, 60000);
     },
     stopPolling() {
       if (this.boardTimer) { clearInterval(this.boardTimer); this.boardTimer = null; }
+    },
+    /* M1-4 E7: 连接状态变化——断网暂停轮询，恢复立即刷新 */
+    setOnline(v) {
+      this.online = !!v;
+      if (v) {
+        this.startPolling();
+        this.refreshBoard(true);
+      }
     },
     startEventPolling() {
       if (this.eventTimer) return;
