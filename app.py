@@ -527,4 +527,12 @@ def api_assignees():
 
 # --- static frontend --------------------------------------------------------
 
+# HTML 不缓存（JS/CSS 有 hash 不受影响，但 index.html 需要每次重新验证）
+@app.middleware("http")
+async def no_cache_index(request, call_next):
+    response = await call_next(request)
+    if request.url.path in ("/", "/index.html"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
 app.mount("/", StaticFiles(directory=str(BASE_DIR / "web" / "dist"), html=True), name="static")

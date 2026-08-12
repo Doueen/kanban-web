@@ -12,18 +12,6 @@ const boards = computed(() => (store.boards || []).filter((b) => !b.archived));
 const cur = computed(() => store.currentBoard);
 const boardOpts = computed(() => boards.value.map((b) => ({ name: b.slug + (b.is_current ? " ●（当前）" : ""), value: b.slug })));
 
-const switchSel = ref("");
-const renameSel = ref("");
-const renameName = ref("");
-const workdirSel = ref("");
-const workdirPath = ref("");
-const rmSel = ref("");
-
-const showSwitchPicker = ref(false);
-const showRenamePicker = ref(false);
-const showWorkdirPicker = ref(false);
-const showRmPicker = ref(false);
-
 const newBoard = reactive({ slug: "", name: "", description: "", icon: "", color: "#5ff0e0" });
 
 async function boardOp(label, fn) {
@@ -37,9 +25,8 @@ async function boardOp(label, fn) {
   }
 }
 
-async function doSwitch() {
-  if (!switchSel.value) { showToast({ message: "请先选择 board", type: "fail" }); return; }
-  await boardOp("切换", () => api(`/api/boards/${encodeURIComponent(switchSel.value)}/switch`, jsonOpts("POST", {})));
+async function doSwitch(slug) {
+  await boardOp("切换", () => api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {})));
 }
 async function doCreate() {
   const slug = newBoard.slug.trim();
@@ -58,40 +45,74 @@ async function doCreate() {
   newBoard.description = "";
   newBoard.icon = "";
 }
-async function doRename() {
-  if (!renameSel.value) { showToast({ message: "请先选择 board", type: "fail" }); return; }
-  const name = renameName.value.trim();
+/* ---------- board 卡片行操作 ---------- */
+const boardMenuShow = ref(false);
+const boardMenuTarget = ref(null);
+const boardMenuActions = computed(() => {
+  const b = boardMenuTarget.value;
+  if (!b) return [];
+  const acts = [
+    { name: "重命名", op: "rename" },
+    { name: b.default_workdir ? "修改工作目录" : "设置工作目录", op: "workdir" },
+  ];
+  if (b.default_workdir) acts.push({ name: "清除工作目录", op: "clearwd" });
+  acts.push({ name: "归档（可恢复）", op: "archive", color: "#ffb86c" });
+  acts.push({ name: "永久删除（不可恢复）", op: "delete", color: "#ff5c6c" });
+  return acts;
+});
+const renameShow = ref(false);
+const renameInput = ref("");
+const workdirShow = ref(false);
+const workdirInput = ref("");
+
+function openBoardMenu(b) {
+  boardMenuTarget.value = b;
+  boardMenuShow.value = true;
+}
+async function onBoardMenuSelect(a) {
+  const b = boardMenuTarget.value;
+  if (!b) return;
+  if (a.op === "rename") {
+    renameInput.value = b.name || b.slug;
+    renameShow.value = true;
+  } else if (a.op === "workdir") {
+    workdirInput.value = b.default_workdir || "";
+    workdirShow.value = true;
+  } else if (a.op === "clearwd") {
+    await doWorkdir(b.slug, null);
+  } else if (a.op === "archive") {
+    try {
+      await showConfirmDialog({ title: "归档 board", message: `确认归档「${b.name || b.slug}」？（可恢复）` });
+    } catch (_) { return; }
+    await doArchive(b.slug);
+  } else if (a.op === "delete") {
+    try {
+      await showConfirmDialog({ title: "永久删除", message: `确认永久删除「${b.name || b.slug}」？此操作不可恢复！` });
+    } catch (_) { return; }
+    await doDelete(b.slug);
+  }
+}
+async function confirmRename() {
+  const name = renameInput.value.trim();
   if (!name) { showToast({ message: "名称不能为空", type: "fail" }); return; }
-  await boardOp("重命名", () => api(`/api/boards/${encodeURIComponent(renameSel.value)}/rename`, jsonOpts("POST", { name })));
-  renameName.value = "";
+  renameShow.value = false;
+  await boardOp("重命名", () => api(`/api/boards/${encodeURIComponent(boardMenuTarget.value.slug)}/rename`, jsonOpts("POST", { name })));
 }
-async function doWorkdir(path) {
-  if (!workdirSel.value) { showToast({ message: "请先选择 board", type: "fail" }); return; }
+async function confirmWorkdir() {
+  const b = boardMenuTarget.value;
+  workdirShow.value = false;
+  await doWorkdir(b.slug, workdirInput.value.trim() || null);
+}
+async function doWorkdir(slug, path) {
   await boardOp("设置工作目录", () =>
-    api(`/api/boards/${encodeURIComponent(workdirSel.value)}/workdir`, jsonOpts("POST", { path: path || null }))
+    api(`/api/boards/${encodeURIComponent(slug)}/workdir`, jsonOpts("POST", { path: path || null }))
   );
-  if (!path) workdirPath.value = "";
 }
-async function doArchive() {
-  if (!rmSel.value) { showToast({ message: "请先选择 board", type: "fail" }); return; }
-  try {
-    await showConfirmDialog({ title: "确认操作", message: `确认归档 board「${rmSel.value}」？（可恢复）` });
-  } catch (_) {
-    return;
-  }
-  await boardOp("归档", () => api(`/api/boards/${encodeURIComponent(rmSel.value)}`, { method: "DELETE" }));
+async function doArchive(slug) {
+  await boardOp("归档", () => api(`/api/boards/${encodeURIComponent(slug)}`, { method: "DELETE" }));
 }
-async function doDelete() {
-  if (!rmSel.value) { showToast({ message: "请先选择 board", type: "fail" }); return; }
-  try {
-    await showConfirmDialog({
-      title: "确认操作",
-      message: `确认永久删除 board「${rmSel.value}」？此操作不可恢复！`,
-    });
-  } catch (_) {
-    return;
-  }
-  await boardOp("删除", () => api(`/api/boards/${encodeURIComponent(rmSel.value)}`, jsonOpts("DELETE", { delete: true })));
+async function doDelete(slug) {
+  await boardOp("删除", () => api(`/api/boards/${encodeURIComponent(slug)}`, jsonOpts("DELETE", { delete: true })));
 }
 
 /* ---------- 通知订阅管理 ---------- */
@@ -206,28 +227,35 @@ function logout() {
       <div class="panel-head"><h3>Board 管理</h3></div>
 
       <div class="settings-block">
-        <h4>当前 Board</h4>
-        <div class="kv">
-          <dt>Slug</dt>
-          <dd><code class="mono">{{ cur ? cur.slug : "…" }}</code></dd>
-          <dt>名称</dt>
-          <dd>{{ cur ? cur.name : "…" }}</dd>
+        <h4>看板列表（点击 ⋯ 管理）</h4>
+        <div v-if="boards.length" class="board-list">
+          <div
+            v-for="b in boards"
+            :key="b.slug"
+            class="board-item"
+            :class="{ current: b.slug === cur?.slug }"
+          >
+            <span class="board-item-dot" :style="{ background: b.color || 'var(--accent)' }"></span>
+            <div class="board-item-main">
+              <div class="board-item-name">
+                {{ b.name || b.slug }}
+                <span v-if="b.slug === cur?.slug" class="board-item-badge">当前</span>
+              </div>
+              <div class="board-item-sub">
+                <code class="mono">{{ b.slug }}</code>
+                <span v-if="b.total != null">· {{ b.total }} 任务</span>
+                <span v-if="b.default_workdir" class="board-item-wd" :title="b.default_workdir">· {{ b.default_workdir }}</span>
+              </div>
+            </div>
+            <button
+              v-if="b.slug !== cur?.slug"
+              class="board-item-switch"
+              @click="doSwitch(b.slug)"
+            >切换</button>
+            <button class="board-item-menu" aria-label="管理 board" @click="openBoardMenu(b)">⋯</button>
+          </div>
         </div>
-      </div>
-
-      <div class="settings-block">
-        <h4>切换 Board</h4>
-        <div class="settings-actions">
-          <van-field
-            :model-value="switchSel"
-            placeholder="选择 board"
-            is-link
-            readonly
-            style="flex: 1; min-width: 160px"
-            @click="showSwitchPicker = true"
-          />
-          <van-button type="primary" @click="doSwitch">切换</van-button>
-        </div>
+        <div v-else class="empty" style="padding: 12px">暂无 board</div>
       </div>
 
       <div class="settings-block">
@@ -241,55 +269,6 @@ function logout() {
         </div>
         <div class="settings-actions">
           <van-button type="primary" @click="doCreate">创建</van-button>
-        </div>
-      </div>
-
-      <div class="settings-block">
-        <h4>重命名</h4>
-        <div class="settings-actions">
-          <van-field
-            :model-value="renameSel"
-            placeholder="选择 board"
-            is-link
-            readonly
-            style="flex: 1; min-width: 140px"
-            @click="showRenamePicker = true"
-          />
-          <van-field v-model="renameName" placeholder="新名称 *" style="flex: 1; min-width: 120px" />
-          <van-button @click="doRename">重命名</van-button>
-        </div>
-      </div>
-
-      <div class="settings-block">
-        <h4>默认工作目录</h4>
-        <div class="settings-actions">
-          <van-field
-            :model-value="workdirSel"
-            placeholder="选择 board"
-            is-link
-            readonly
-            style="flex: 1; min-width: 140px"
-            @click="showWorkdirPicker = true"
-          />
-          <van-field v-model="workdirPath" placeholder="绝对路径（留空清除）" style="flex: 1; min-width: 160px" />
-          <van-button @click="doWorkdir(workdirPath)">设置</van-button>
-          <van-button @click="doWorkdir(null)">清除</van-button>
-        </div>
-      </div>
-
-      <div class="settings-block">
-        <h4>归档 / 删除</h4>
-        <div class="settings-actions">
-          <van-field
-            :model-value="rmSel"
-            placeholder="选择 board"
-            is-link
-            readonly
-            style="flex: 1; min-width: 140px"
-            @click="showRmPicker = true"
-          />
-          <van-button type="warning" @click="doArchive">归档</van-button>
-          <van-button type="danger" @click="doDelete">删除（不可恢复）</van-button>
         </div>
       </div>
     </div>
