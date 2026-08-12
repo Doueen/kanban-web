@@ -171,7 +171,15 @@ async function submitSwarm() {
 </script>
 
 <template>
-  <van-popup v-model:show="show" position="bottom" round style="height: 88vh">
+  <van-popup
+    v-model:show="show"
+    position="bottom"
+    round
+    closeable
+    close-icon="cross"
+    close-on-click-overlay
+    style="height: 88vh"
+  >
     <div class="popup-title">新建任务</div>
     <div v-if="createStatus" class="create-status-note">目标列：{{ createStatus }}</div>
 
@@ -249,8 +257,9 @@ async function submitSwarm() {
       />
     </div>
 
-    <div class="popup-actions">
-      <van-button block type="primary" :loading="submitting" @click="submit">
+    <div class="popup-actions" style="display: flex; gap: 10px">
+      <van-button style="flex: 1" @click="store.showCreate = false">取消</van-button>
+      <van-button block type="primary" style="flex: 2" :loading="submitting" @click="submit">
         {{ mode === 0 ? "创建" : "创建 Swarm" }}
       </van-button>
     </div>
