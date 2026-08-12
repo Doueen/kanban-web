@@ -7,7 +7,15 @@ const store = useAppStore();
 const refreshing = ref(false);
 const showAssignee = ref(false);
 
-const assigneeCols = computed(() => ["全部指派", ...store.assignees.map((a) => a.name)]);
+const assigneeCols = computed(() => [
+  { text: "全部指派", value: "" },
+  ...store.assignees.map((a) => ({ text: a.name, value: a.name })),
+]);
+
+const listChips = computed(() => [
+  { value: "", label: "全部", count: store.board ? store.board.statuses.reduce((s, c) => s + (c.count || 0), 0) : 0 },
+  ...(store.board ? store.board.statuses.map((s) => ({ value: s.status, label: s.label, count: s.count || 0 })) : []),
+]);
 
 const filtered = computed(() => {
   let tasks = store.board ? store.board.statuses.flatMap((c) => c.tasks) : [];
@@ -45,12 +53,15 @@ function openMenu(t, e) {
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
       <div v-if="store.board" class="board-chips">
         <button
-          v-for="c in [{ value: '', label: '全部' }, ...store.board.statuses]"
+          v-for="c in listChips"
           :key="c.value"
           class="chip"
           :class="{ active: store.listStatus === c.value }"
           @click="store.listStatus = c.value"
-        >{{ c.label }}</button>
+        >
+          <span class="chip-label">{{ c.label }}</span>
+          <span v-if="c.count > 0" class="chip-count">{{ c.count > 99 ? "99+" : c.count }}</span>
+        </button>
       </div>
 
       <div class="list-toolbar">

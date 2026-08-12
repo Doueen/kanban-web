@@ -56,7 +56,10 @@ watch(
   }
 );
 
-const assignColumns = computed(() => ["未指派", ...store.assignees.map((a) => a.name)]);
+const assignColumns = computed(() => [
+  { text: "未指派", value: "" },
+  ...store.assignees.map((a) => ({ text: a.name, value: a.name })),
+]);
 
 function onAssignPickerConfirm() {
   closeAssign();
@@ -212,8 +215,8 @@ function closeEdit() {
     <div class="popup-title">改指派</div>
     <van-picker
       :columns="assignColumns"
-      :model-value="assignValue"
-      @update:model-value="(v) => (assignValue = v)"
+      :model-value="assignValue ? [assignValue] : ['']"
+      @update:model-value="(v) => (assignValue = (Array.isArray(v) ? v[0] : v) || '')"
       @confirm="onAssignPickerConfirm"
       @cancel="closeAssign"
       @click-overlay="closeAssign"

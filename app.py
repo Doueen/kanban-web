@@ -11,8 +11,8 @@ import secrets
 import sys
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
@@ -129,6 +129,22 @@ def api_stats():
 
 
 # --- boards -----------------------------------------------------------------
+
+# 交付产物下载白名单前缀（绝对路径，可扩展）
+DL_ALLOWED_PREFIXES = (
+    "/opt/hermes/kanban/",   # 所有 board 工作目录与数据区
+    "/root/notes/",          # 笔记/交付目录
+)
+
+@app.get("/api/download", dependencies=[Depends(require_auth)])
+def api_download(path: str = Query(...)):
+    """下载交付产物（白名单路径内只读文件）。"""
+    p = os.path.realpath(path)
+    if not any(p.startswith(pre) for pre in DL_ALLOWED_PREFIXES):
+        raise HTTPException(403, "路径不在允许下载范围内")
+    if not os.path.isfile(p):
+        raise HTTPException(404, "文件不存在")
+    return FileResponse(p, filename=os.path.basename(p), media_type="application/octet-stream")
 
 @app.get("/api/boards", dependencies=[Depends(require_auth)])
 def api_boards():
