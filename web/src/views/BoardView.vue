@@ -110,8 +110,25 @@ function onTouchEnd(e) {
   }
 }
 
-watch(() => store.boardFilter, () => nextTick(updateDots));
-watch(() => store.board, () => nextTick(updateDots));
+/* 进入筛选态时自动展开目标列（覆盖：点筛选 chip / 只看此列 / 滑动切列 / 恢复记忆），
+   保证任务列表直接可见，而不是 56px 折叠窄条。boardFilter watch 覆盖点击/滑动等交互；
+   board watch 覆盖移动端恢复记忆场景（此时 loadCollapsed 已执行完毕） */
+function ensureFilteredColExpanded(v) {
+  if (v && v !== "all" && store.isColFolded({ status: v, count: 0 })) {
+    store.setCollapsed(v, false);
+  }
+}
+watch(
+  () => store.boardFilter,
+  (v) => {
+    ensureFilteredColExpanded(v);
+    nextTick(updateDots);
+  }
+);
+watch(() => store.board, () => {
+  ensureFilteredColExpanded(store.boardFilter);
+  nextTick(updateDots);
+});
 onMounted(() => {
   nextTick(updateDots);
   /* P1#7：移动端恢复最近使用列（校验存在性） */
