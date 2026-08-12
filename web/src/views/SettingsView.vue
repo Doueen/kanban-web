@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from "vue";
 import { showToast, showConfirmDialog } from "vant";
-import { useAppStore, MOB_SWITCHES, THEMES } from "../store";
+import { useAppStore, MOB_SWITCHES, THEMES, STATUS_ORDER, STATUS, STATUS_CSS } from "../store";
 import { api, jsonOpts } from "../api";
 import SettingSwitch from "../components/SettingSwitch.vue";
 
@@ -234,6 +234,12 @@ function onSysDark(val) {
   showToast({ message: val ? "已开启跟随系统" : "已关闭跟随系统", duration: 1200 });
 }
 
+/* ---------- 看板分类显示开关 ---------- */
+function onChipToggle(st) {
+  store.toggleChip(st);
+  showToast({ message: store.hiddenChips.includes(st) ? "已隐藏「" + STATUS[st] + "」" : "已显示「" + STATUS[st] + "」", duration: 1200 });
+}
+
 function logout() {
   showToast({ message: "已退出登录", type: "info", duration: 800 });
   setTimeout(() => store.logout(), 400);
@@ -342,6 +348,25 @@ function logout() {
         :model-value="sysDarkOn"
         @update:model-value="onSysDark"
       />
+    </div>
+
+    <!-- 看板分类显示 -->
+    <div class="panel settings-panel">
+      <div class="panel-head"><h3>看板分类显示</h3></div>
+      <div class="settings-block">
+        <p class="settings-hint">控制看板页 / 列表页顶部分类按钮的显示（「全部」固定显示）</p>
+        <div v-for="st in STATUS_ORDER" :key="st" class="chip-toggle-row">
+          <span class="chip-toggle-label">
+            <span class="dot" :style="{ background: STATUS_CSS[st] }"></span>
+            {{ STATUS[st] }}
+          </span>
+          <van-switch
+            :model-value="!store.hiddenChips.includes(st)"
+            size="20px"
+            @update:model-value="() => onChipToggle(st)"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- 移动端看板 -->

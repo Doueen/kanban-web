@@ -1094,3 +1094,12 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
 .board-item-switch { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .board-item-menu { min-width: 44px; padding: 0; font-size: 18px; }
 .board-item.archived { opacity: 0.6; }
+
+/* ---------- 看板分类显示开关 ---------- */
+.settings-hint { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.chip-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 4px; border-bottom: 1px dashed var(--border);
+}
+.chip-toggle-row:last-child { border-bottom: none; }
+.chip-toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }

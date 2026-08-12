@@ -551,7 +551,7 @@ def api_assignees():
 @app.middleware("http")
 async def no_cache_index(request, call_next):
     response = await call_next(request)
-    if request.url.path in ("/", "/index.html"):
+    if request.url.path in ("/", "/index.html", "/sw.js"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 

@@ -53,8 +53,12 @@ const assigneeActions = computed(() => [
 ]);
 
 const listChips = computed(() => [
-  { value: "", label: "全部", count: store.board ? store.board.statuses.reduce((s, c) => s + (c.count || 0), 0) : 0 },
-  ...(store.board ? store.board.statuses.map((s) => ({ value: s.status, label: s.label, count: s.count || 0 })) : []),
+  { value: "", label: "全部", count: store.board ? store.board.statuses.reduce((a, c) => a + (c.count || 0), 0) : 0 },
+  ...(store.board
+    ? store.board.statuses
+        .filter((s) => !store.hiddenChips.includes(s.status))
+        .map((s) => ({ value: s.status, label: s.label, count: s.count || 0 }))
+    : []),
 ]);
 
 const filtered = computed(() => {

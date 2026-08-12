@@ -277,6 +277,9 @@ export const useAppStore = defineStore("app", {
     eventSince: 0,
     theme: "linear",
     mob: { chips: true, swipe: true, autofold: true, longpress: true, indicator: true, quickact: true },
+    hiddenChips: (() => {
+      try { return JSON.parse(localStorage.getItem("kb-hidden-chips") || "[]"); } catch (_) { return []; }
+    })(),
     collapsed: {},
     draggingId: null,
     showCreate: false,
@@ -386,6 +389,14 @@ export const useAppStore = defineStore("app", {
     setMob(key, val) {
       this.mob[key] = !!val;
       try { localStorage.setItem("kb-mob-" + key, val ? "1" : "0"); } catch (_) { /* */ }
+    },
+    /* 看板分类 chips 显示开关（隐藏状态集合持久化） */
+    toggleChip(status) {
+      const s = new Set(this.hiddenChips);
+      if (s.has(status)) s.delete(status);
+      else s.add(status);
+      this.hiddenChips = [...s];
+      try { localStorage.setItem("kb-hidden-chips", JSON.stringify(this.hiddenChips)); } catch (_) { /* */ }
     },
 
     /* ---------- collapse state ---------- */

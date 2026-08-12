@@ -9,7 +9,9 @@ const chips = computed(() => {
   const total = store.board.statuses.reduce((s, c) => s + (c.count || 0), 0);
   return [
     { value: "all", label: "全部", count: total },
-    ...store.board.statuses.map((s) => ({ value: s.status, label: s.label, count: s.count || 0 })),
+    ...store.board.statuses
+      .filter((s) => !store.hiddenChips.includes(s.status))
+      .map((s) => ({ value: s.status, label: s.label, count: s.count || 0 })),
   ];
 });
 
