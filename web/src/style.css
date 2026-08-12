@@ -1183,3 +1183,46 @@ body, button, input, textarea, select, .card { touch-action: manipulation; }
    改用 vh（视口）单位强制约束，所有 action-sheet 生效。 */
 .van-action-sheet { max-height: 70vh !important; }
 .van-action-sheet__content { flex: 1 1 auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+
+/* ========== 列表页组件精修（2026-08） ========== */
+/* 行卡片：清晰边框 + 状态左缘条 + hover */
+.list-row {
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  position: relative;
+  transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.list-row::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px;
+  width: 3px; border-radius: 3px;
+  background: var(--c, var(--muted));
+}
+.list-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  transform: translateY(-1px);
+}
+.list-row .list-row-main { padding-left: 4px; }
+.list-row-title {
+  font-weight: 600; font-size: 14px; line-height: 1.4;
+  word-break: break-word; margin-bottom: 6px;
+}
+.list-row-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; color: var(--muted);
+}
+/* meta 时间 pill（与 ID/指派统一） */
+.list-row-meta .row-time {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 11px;
+}
+/* 工具栏：窄屏两行自适应 */
+@media (max-width: 619px) {
+  .list-toolbar { flex-wrap: wrap; }
+  .list-toolbar .list-assignee { flex: 1 1 45%; min-width: 0; }
+  .list-toolbar .van-search { flex: 1 1 100%; order: -1; }
+  .check-label { margin-left: auto; }
+}

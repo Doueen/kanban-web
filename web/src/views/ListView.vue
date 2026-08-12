@@ -172,8 +172,8 @@ function openMenu(t, e) {
               <van-tag :color="STATUS_CSS[t.status]" text-color="#0d0f1a">{{ STATUS[t.status] }}</van-tag>
               <span v-if="t.priority > 0" class="card-priority">P{{ t.priority }}</span>
               <span class="card-id">{{ t.id }}</span>
-              <span v-if="t.assignee">@{{ t.assignee }}</span>
-              <span :title="fmtTime(t.created_at)">创建于 {{ ago(t.created_at) }}</span>
+              <span v-if="t.assignee" class="card-assignee">@{{ t.assignee }}</span>
+              <span class="row-time" :title="fmtTime(t.created_at)">创建于 {{ ago(t.created_at) }}</span>
             </div>
           </div>
           <button v-if="!batchMode" class="menu-btn list-menu-btn" aria-label="操作菜单" @click="openMenu(t, $event)" @touchstart.stop.prevent>⋯</button>
