@@ -23,7 +23,7 @@ const form = reactive({
   priority: 0,
   workspace: "",
   parent: "",
-  triage: false,
+  triage: true,
 });
 
 const pickers = reactive({
@@ -106,6 +106,10 @@ watch(show, (v) => {
     form.title = store.createPrefill.title || "";
     form.body = store.createPrefill.body || "";
     form.parent = store.createPrefill.parent || "";
+    /* 工作区默认：当前 board 配置了工作目录 → 直接用；否则跟随 kanban 默认 */
+    form.workspace = store.currentBoard?.default_workdir ? "dir:" + store.currentBoard.default_workdir : "";
+    /* 默认放入待梳理；"新建到此列"（指定了 status）时跟随指定列 */
+    form.triage = store.createPrefill.status ? store.createPrefill.status === "triage" : true;
     swarm.goal = store.createPrefill.body || "";
     mode.value = 0;
   } else {
