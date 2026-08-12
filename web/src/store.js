@@ -696,13 +696,18 @@ export const useAppStore = defineStore("app", {
     },
 
     /* ---------- 分页任务列表（GET /api/tasks 信封） ---------- */
-    /* 过滤/搜索/切板变化 → 重置第 1 页 + 重拉（防抖 300ms）。注册一次，幂等。 */
+    /* 过滤/搜索/切板变化 → 重置第 1 页 + 重拉（防抖 300ms）。注册一次，幂等。
+       基线机制：首次回调（初始加载 currentBoard null→slug）只记录基线，
+       不触发重置 —— 否则会清掉 URL 恢复的页码（实测踩坑）。 */
     initTasksWatch() {
       if (this._tasksWatchInstalled) return;
       this._tasksWatchInstalled = true;
       this.initPageFromUrl();
       const vm = this;
       let t = null;
+      let lastBoardSlug = null;
+      let lastFilters = null; // 首次回调建立基线
+      let baseline = false;
       this._tasksWatch = watch(
         () => [
           vm.listStatus,
@@ -711,10 +716,20 @@ export const useAppStore = defineStore("app", {
           vm.search,
           vm.currentBoard ? vm.currentBoard.slug : null,
         ],
-        () => {
+        (vals) => {
+          const slug = vals[4];
+          const boardChanged =
+            baseline && slug !== null && lastBoardSlug !== null && slug !== lastBoardSlug;
+          const filterChanged =
+            baseline &&
+            lastFilters !== null &&
+            vals.slice(0, 4).some((v, i) => v !== lastFilters[i]);
+          lastBoardSlug = slug;
+          lastFilters = vals.slice(0, 4);
+          baseline = true;
           if (t) clearTimeout(t);
           t = setTimeout(() => {
-            if (vm.page !== 1) {
+            if ((boardChanged || filterChanged) && vm.page !== 1) {
               vm.page = 1;
               vm._syncPageUrl();
             }

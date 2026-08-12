@@ -5,14 +5,19 @@ import "vant/lib/index.css";
 
 import App from "./App.vue";
 import "./style.css";
+import { useAppStore } from "./store";
 
 const app = createApp(App);
+const pinia = createPinia();
+/* 调试出口（与 window.__vueErr 同款）：浏览器控制台可拿 store 实例，
+   window.__store.fetchTasks() / setPage() 用于分页数据层联调 */
+window.__store = () => useAppStore(pinia);
 app.config.errorHandler = (err, _instance, info) => {
   const msg = `${info}: ${err && err.message ? err.message : err}`;
   console.error("[vue-error]", msg);
   window.__vueErr = (window.__vueErr || []).concat([msg]);
 };
-app.use(createPinia());
+app.use(pinia);
 app.use(Vant);
 app.mount("#app");
 
