@@ -348,30 +348,38 @@ function logout() {
     </div>
 
     <!-- pickers -->
-    <van-picker
-      v-model:show="showSwitchPicker"
-      :columns="boardOpts"
-      title="选择 board"
-      @confirm="(v) => (switchSel = v.selectedOptions[0]?.value || '')"
-    />
-    <van-picker
-      v-model:show="showRenamePicker"
-      :columns="boardOpts"
-      title="选择 board"
-      @confirm="(v) => (renameSel = v.selectedOptions[0]?.value || '')"
-    />
-    <van-picker
-      v-model:show="showWorkdirPicker"
-      :columns="boardOpts"
-      title="选择 board"
-      @confirm="(v) => (workdirSel = v.selectedOptions[0]?.value || '')"
-    />
-    <van-picker
-      v-model:show="showRmPicker"
-      :columns="boardOpts"
-      title="选择 board"
-      @confirm="(v) => (rmSel = v.selectedOptions[0]?.value || '')"
-    />
+    <van-popup v-model:show="showSwitchPicker" position="bottom" round>
+      <van-picker
+        :columns="boardOpts"
+        title="选择 board"
+        @confirm="(v) => (switchSel = v.selectedOptions[0]?.value || '')"
+        @cancel="showSwitchPicker = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="showRenamePicker" position="bottom" round>
+      <van-picker
+        :columns="boardOpts"
+        title="选择 board"
+        @confirm="(v) => (renameSel = v.selectedOptions[0]?.value || '')"
+        @cancel="showRenamePicker = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="showWorkdirPicker" position="bottom" round>
+      <van-picker
+        :columns="boardOpts"
+        title="选择 board"
+        @confirm="(v) => (workdirSel = v.selectedOptions[0]?.value || '')"
+        @cancel="showWorkdirPicker = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="showRmPicker" position="bottom" round>
+      <van-picker
+        :columns="boardOpts"
+        title="选择 board"
+        @confirm="(v) => (rmSel = v.selectedOptions[0]?.value || '')"
+        @cancel="showRmPicker = false"
+      />
+    </van-popup>
 
     <!-- GC 弹窗 -->
     <van-dialog v-model:show="gcShow" title="运行 GC" show-cancel-button :before-close="runGc" close-on-click-overlay>

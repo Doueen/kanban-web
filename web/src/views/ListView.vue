@@ -108,12 +108,14 @@ function openMenu(t, e) {
         </div>
       </div>
 
-      <van-picker
-        v-model:show="showAssignee"
-        :columns="assigneeCols"
-        title="选择指派"
-        @confirm="(v) => { const t = v.selectedOptions[0]?.text; store.listAssignee = t === '全部指派' ? '' : t; }"
-      />
+      <van-popup v-model:show="showAssignee" position="bottom" round>
+        <van-picker
+          :columns="assigneeCols"
+          title="选择指派"
+          @confirm="(v) => { const t = v.selectedOptions[0]?.text; store.listAssignee = t === '全部指派' ? '' : t; }"
+          @cancel="showAssignee = false"
+        />
+      </van-popup>
     </van-pull-refresh>
   </section>
 </template>

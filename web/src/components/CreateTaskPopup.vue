@@ -30,6 +30,7 @@ const pickers = reactive({
   assignee: false,
   priority: false,
   workspace: false,
+  parent: false,
 });
 
 const PRIORITY_COLS = ["P0 普通", "P1", "P2", "P3 最高"].map((t, i) => ({ text: t, value: i }));
@@ -38,6 +39,26 @@ const assigneeCols = computed(() => [
   { text: "未指派", value: "" },
   ...store.assignees.map((a) => ({ text: a.name, value: a.name })),
 ]);
+/* 父任务选择：全部任务（非归档在前，归档在后） */
+const parentCols = computed(() => {
+  if (!store.board) return [{ text: "无父任务", value: "" }];
+  const tasks = [
+    ...store.board.statuses.filter((c) => c.status !== "archived").flatMap((c) => c.tasks),
+    ...store.board.statuses.filter((c) => c.status === "archived").flatMap((c) => c.tasks),
+  ];
+  return [
+    { text: "无父任务", value: "" },
+    ...tasks.map((t) => ({
+      text: `${t.title.slice(0, 24)}${t.title.length > 24 ? "…" : ""}（${t.id}）`,
+      value: t.id,
+    })),
+  ];
+});
+const parentLabel = computed(() => {
+  if (!form.parent) return "";
+  const hit = parentCols.value.find((c) => c.value === form.parent);
+  return hit ? hit.text : form.parent;
+});
 
 watch(
   () => store.createPrefill,
@@ -216,7 +237,16 @@ async function submitSwarm() {
         readonly
         @click="pickers.workspace = true"
       />
-      <van-field v-model="form.parent" label="父任务 ID" placeholder="t_xxxx（可选）" clearable />
+      <van-field
+        :model-value="parentLabel"
+        label="父任务"
+        placeholder="选择父任务（可选）"
+        is-link
+        readonly
+        clearable
+        @click="pickers.parent = true"
+        @clear="form.parent = ''"
+      />
       <van-cell title="放入待梳理（triage）" center>
         <template #right-icon>
           <van-switch v-model="form.triage" size="20px" />
@@ -264,23 +294,37 @@ async function submitSwarm() {
       </van-button>
     </div>
 
-    <van-picker
-      v-model:show="pickers.assignee"
-      :columns="assigneeCols"
-      title="选择"
-      @confirm="(v) => { if (mode === 0) form.assignee = v.selectedOptions[0]?.text === '未指派' ? '' : v.selectedOptions[0]?.text; else swarm.createdBy = v.selectedOptions[0]?.text === '未指派' ? '' : v.selectedOptions[0]?.text; }"
-    />
-    <van-picker
-      v-model:show="pickers.priority"
-      :columns="PRIORITY_COLS"
-      title="选择优先级"
-      @confirm="(v) => { const t = v.selectedOptions[0]?.text; const i = PRIORITY_COLS.findIndex((c) => c.text === t); if (mode === 0) form.priority = i < 0 ? 0 : i; else swarm.priority = i < 0 ? 0 : i; }"
-    />
-    <van-picker
-      v-model:show="pickers.workspace"
-      :columns="WORKSPACE_COLS"
-      title="选择工作区"
-      @confirm="(v) => (form.workspace = v.selectedOptions[0]?.text || 'scratch')"
-    />
+    <van-popup v-model:show="pickers.assignee" position="bottom" round>
+      <van-picker
+        :columns="assigneeCols"
+        title="选择"
+        @confirm="(v) => { if (mode === 0) form.assignee = v.selectedOptions[0]?.text === '未指派' ? '' : v.selectedOptions[0]?.text; else swarm.createdBy = v.selectedOptions[0]?.text === '未指派' ? '' : v.selectedOptions[0]?.text; }"
+        @cancel="pickers.assignee = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="pickers.priority" position="bottom" round>
+      <van-picker
+        :columns="PRIORITY_COLS"
+        title="选择优先级"
+        @confirm="(v) => { const t = v.selectedOptions[0]?.text; const i = PRIORITY_COLS.findIndex((c) => c.text === t); if (mode === 0) form.priority = i < 0 ? 0 : i; else swarm.priority = i < 0 ? 0 : i; }"
+        @cancel="pickers.priority = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="pickers.workspace" position="bottom" round>
+      <van-picker
+        :columns="WORKSPACE_COLS"
+        title="选择工作区"
+        @confirm="(v) => (form.workspace = v.selectedOptions[0]?.text || 'scratch')"
+        @cancel="pickers.workspace = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="pickers.parent" position="bottom" round>
+      <van-picker
+        :columns="parentCols"
+        title="选择父任务"
+        @confirm="(v) => (form.parent = v.selectedOptions[0]?.value || '')"
+        @cancel="pickers.parent = false"
+      />
+    </van-popup>
   </van-popup>
 </template>
