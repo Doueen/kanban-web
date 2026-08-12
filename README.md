@@ -78,8 +78,10 @@ deploy.sh         # 一键构建部署
 | `status` / `assignee` / `q` / `archived` | — | 原有筛选保持不变（`archived=1/true/yes` 包含归档） |
 | `page` | `1` | 页码；非数字或 ≤0 回退默认值 |
 | `page_size` | `20` | 每页条数；非数字或 ≤0 回退默认值，>100 钳制为 100 |
+| `sort` | `priority` | `status`（看板列序，tiebreak 优先级/创建时间）/ `priority`（优先级降序）/ `created`（创建时间降序）；非法值回退默认排序 |
 
-- 排序固定 `priority DESC, created_at DESC`（分页切片稳定，与 CLI `list` 一致）
+- 默认排序 `priority DESC, created_at DESC`（分页切片稳定，与 CLI `list` 一致）；`sort=status` 按看板列序
+  triage→todo→ready→running→blocked→scheduled→review→done→archived 排列
 - 页码超界返回 `items: []`（不报错），`total` 仍为真实总数
 - 非法 `status` 依旧返回 400（校验保留）
 

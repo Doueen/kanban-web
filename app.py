@@ -129,15 +129,17 @@ def _page_param(value, default, max_value=None):
 
 @app.get("/api/tasks", dependencies=[Depends(require_auth)])
 def api_tasks(status: str = None, assignee: str = None, q: str = None, archived: str = None,
-              page: str = "1", page_size: str = "20"):
+              page: str = "1", page_size: str = "20", sort: str = None):
     include_archived = archived in ("1", "true", "yes")
     if status and status not in db.STATUS_LABELS:
         raise HTTPException(status_code=400, detail="invalid status")
+    if sort and sort not in db._SORT_SQL:
+        raise HTTPException(status_code=400, detail="invalid sort")
     # page/page_size 声明为 str 而非 int：非数字/负数等非法输入回退默认值而非 422
     page = _page_param(page, 1)
     page_size = _page_param(page_size, 20, max_value=100)
     items = db.fetch_tasks(status=status, assignee=assignee, q=q,
-                           include_archived=include_archived,
+                           include_archived=include_archived, sort=sort,
                            limit=page_size, offset=(page - 1) * page_size)
     total = db.count_tasks(status=status, assignee=assignee, q=q, include_archived=include_archived)
     total_pages = (total + page_size - 1) // page_size if total else 0

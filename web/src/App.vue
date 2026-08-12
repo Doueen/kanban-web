@@ -130,6 +130,7 @@ function closeSearchDrop() {
 }
 async function doRefresh() {
   await store.refreshBoard(true);
+  await store.refreshTasks(); // 列表页分页数据同步刷新
   if (store.view === "stats") store.eventSince = 0;
   if (store.view === "stats") await store.pollEvents();
 }
@@ -179,7 +180,14 @@ function isTypingTarget(t) {
 async function onGlobalKeydown(e) {
   if (!store.authed) return;
   if (e.key === "Escape") {
-    /* F5: Esc 依次关闭 快捷键面板 → 详情 → 菜单 → 移动到 → 创建弹窗 */
+    /* F5: Esc 依次关闭 快捷键面板 → 详情 → 菜单 → 移动到 → 创建弹窗
+       确认弹窗（feedback.confirm 的 van-dialog）优先级最高：Esc 由 feedback.js
+       捕获阶段监听取消弹窗，这里看到可见 dialog 时直接让路，避免误关弹窗下的详情/菜单 */
+    const dlg = document.querySelector(".van-dialog");
+    /* 确认弹窗（feedback.confirm 的 van-dialog）由 feedback.js 捕获阶段监听处理 Esc；
+       快捷键面板自身是 van-dialog，排除之，否则 Esc 永远关不掉帮助面板（M1-5 E9） */
+    if (dlg && getComputedStyle(dlg).display !== "none" && !dlg.classList.contains("help-dialog"))
+      return;
     if (helpShow.value) {
       e.preventDefault();
       helpShow.value = false;

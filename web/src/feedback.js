@@ -226,6 +226,18 @@ export function confirm({
   confirmButtonColor,
 } = {}) {
   const prevFocus = document.activeElement;
+  /* §2.6 Esc 可取消：捕获阶段监听，点击可见弹窗的取消按钮（取消=reject→false），
+     并 stopPropagation 阻止 App.vue 全局 Esc 链误关弹窗下方的详情/菜单 */
+  const onEsc = (e) => {
+    if (e.key !== "Escape") return;
+    const dlg = document.querySelector(".van-dialog");
+    if (!dlg || getComputedStyle(dlg).display === "none") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cancelBtn = dlg.querySelector(".van-dialog__cancel");
+    (cancelBtn || dlg.querySelector(".van-dialog__confirm")).click();
+  };
+  window.addEventListener("keydown", onEsc, true);
   return showConfirmDialog({
     title,
     message,
@@ -236,6 +248,7 @@ export function confirm({
     .then(() => true)
     .catch(() => false)
     .finally(() => {
+      window.removeEventListener("keydown", onEsc, true);
       try {
         if (prevFocus && prevFocus.focus) prevFocus.focus();
       } catch (_) {

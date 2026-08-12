@@ -1,9 +1,10 @@
 <script setup>
 import { computed, ref } from "vue";
-import { useAppStore, STATUS, STATUS_CSS, STATUS_ORDER } from "../store";
+import { useAppStore, STATUS, STATUS_CSS } from "../store";
 import { api, jsonOpts } from "../api";
 import { ago, fmtTime } from "../utils";
 import { ok, fail, confirm, COPY } from "../feedback";
+import PagerBar from "../components/PagerBar.vue";
 
 const store = useAppStore();
 const refreshing = ref(false);
@@ -53,6 +54,7 @@ async function batchAction(action, label) {
   batchMode.value = false;
   selected.value = new Set();
   await store.refreshBoard();
+  await store.refreshTasks();
 }
 const batchCount = computed(() => selected.value.size);
 
@@ -74,32 +76,20 @@ const listChips = computed(() => [
     : []),
 ]);
 
-const filtered = computed(() => {
-  let tasks = store.board ? store.board.statuses.flatMap((c) => c.tasks) : [];
-  if (store.listStatus) tasks = tasks.filter((t) => t.status === store.listStatus);
-  if (store.listAssignee) tasks = tasks.filter((t) => t.assignee === store.listAssignee);
-  const q = store.search.trim().toLowerCase();
-  if (q) tasks = tasks.filter((t) => (t.title + " " + (t.body || "")).toLowerCase().includes(q));
-  if (!store.listArchived) tasks = tasks.filter((t) => t.status !== "archived");
-  if (store.sortBy === "status") {
-    tasks = [...tasks].sort(
-      (a, b) =>
-        STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) ||
-        (b.priority || 0) - (a.priority || 0) ||
-        (b.created_at || 0) - (a.created_at || 0)
-    );
-  } else if (store.sortBy === "priority") {
-    tasks = [...tasks].sort(
-      (a, b) => (b.priority || 0) - (a.priority || 0) || (b.created_at || 0) - (a.created_at || 0)
-    );
-  } else {
-    tasks = [...tasks].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-  }
-  return tasks;
-});
+/* 行数据 = 服务端分页结果（store.fetchTasks 已按 status/assignee/q/archived/sort 过滤排序）。
+   客户端不再过滤 board —— 过滤/排序变化经 initTasksWatch 防抖重置第 1 页并重拉。 */
+const tasks = computed(() => store.tasks);
+const tasksLoading = computed(() => store.tasksLoading);
+const tasksError = computed(() => store.tasksError);
+
+/* 空态：真无数据（total=0）或过滤后无匹配 —— 分页器仍可见以便翻回 */
+const isEmpty = computed(
+  () => !store.tasksLoading && !store.tasksError && store.tasks.length === 0
+);
 
 async function onRefresh() {
   await store.refreshBoard();
+  await store.refreshTasks();
   refreshing.value = false;
 }
 
@@ -179,13 +169,26 @@ function openMenu(t, e) {
         }}
       </div>
 
-      <div>
-        <van-empty v-if="!filtered.length" description="没有匹配的任务" />
+      <div class="list-body">
+        <!-- 换页加载中：保留旧行 + 顶部细加载条 -->
+        <div v-if="tasksLoading" class="list-loading-bar" role="status" aria-label="加载中"></div>
+
+        <!-- 错误态：重试走数据层 refreshTasks -->
+        <div v-if="tasksError" class="list-error" role="alert">
+          <span>加载失败：{{ tasksError }}</span>
+          <button class="tb-chip" @click="store.refreshTasks()">重试</button>
+        </div>
+
+        <van-empty v-else-if="isEmpty" description="没有匹配的任务" />
+
         <div
-          v-for="t in filtered"
+          v-for="t in tasks"
           :key="t.id"
           class="list-row"
-          :class="['st-' + t.status, { 'batch-selected': batchMode && selected.has(t.id) }]"
+          :class="[
+            'st-' + t.status,
+            { 'batch-selected': batchMode && selected.has(t.id), 'row-fetching': tasksLoading },
+          ]"
           @click="batchMode ? toggleSelect(t.id) : store.openDetail(t.id)"
         >
           <van-checkbox
@@ -219,6 +222,9 @@ function openMenu(t, e) {
           </button>
         </div>
       </div>
+
+      <!-- 分页器：仅 total > pageSize 时显示；页码/上下页均走 store.setPage（URL 同步 + 无整页刷新） -->
+      <PagerBar />
 
       <van-action-sheet
         v-model:show="showAssignee"

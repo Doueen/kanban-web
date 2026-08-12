@@ -180,14 +180,29 @@ def _tasks_where(status=None, assignee=None, q=None, include_archived=False):
     return sql, params
 
 
-def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None, offset=None, db_path=None):
+STATUS_ORDER = list(STATUS_LABELS.keys())  # 前端 ListView 同序：triage→todo→ready→running→blocked→scheduled→review→done→archived
+
+# sort 参数 → ORDER BY 片段（status 按看板列序，tiebreak 与默认一致）
+_SORT_SQL = {
+    "status": "CASE status %s END, priority DESC, created_at DESC"
+    % " ".join("WHEN '%s' THEN %d" % (s, i) for i, s in enumerate(STATUS_ORDER)),
+    "priority": "priority DESC, created_at DESC",
+    "created": "created_at DESC",
+}
+
+
+def fetch_tasks(status=None, assignee=None, q=None, include_archived=False, limit=None, offset=None, sort: str | None = None, db_path=None):
     """List tasks with optional filters. Mirrors the CLI `list` view.
 
     Pagination support: `limit` + `offset` (both optional, applied after the
     fixed ORDER BY priority DESC, created_at DESC so pages are stable).
+
+    `sort`: "status"（看板列序）/ "priority" / "created"；None 或未知值 →
+    默认 priority DESC, created_at DESC（保持旧行为，分页稳定）。
     """
     where, params = _tasks_where(status=status, assignee=assignee, q=q, include_archived=include_archived)
-    sql = "SELECT %s FROM tasks WHERE 1=1%s ORDER BY priority DESC, created_at DESC" % (TASK_COLS, where)
+    order = _SORT_SQL[sort] if sort in _SORT_SQL else "priority DESC, created_at DESC"
+    sql = "SELECT %s FROM tasks WHERE 1=1%s ORDER BY %s" % (TASK_COLS, where, order)
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)

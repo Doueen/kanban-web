@@ -435,7 +435,8 @@ export const useAppStore = defineStore("app", {
     pageSize: 20,
     total: 0,
     totalPages: 0,
-    tasksLoading: false,
+    /* 初始 true：首拉前的空窗不闪「没有匹配的任务」；fetchTasks 每次置 true、finally 置 false */
+    tasksLoading: true,
     tasksError: "",
   }),
 
@@ -714,18 +715,19 @@ export const useAppStore = defineStore("app", {
           vm.listAssignee,
           vm.listArchived,
           vm.search,
+          vm.sortBy,
           vm.currentBoard ? vm.currentBoard.slug : null,
         ],
         (vals) => {
-          const slug = vals[4];
+          const slug = vals[5];
           const boardChanged =
             baseline && slug !== null && lastBoardSlug !== null && slug !== lastBoardSlug;
           const filterChanged =
             baseline &&
             lastFilters !== null &&
-            vals.slice(0, 4).some((v, i) => v !== lastFilters[i]);
+            vals.slice(0, 5).some((v, i) => v !== lastFilters[i]);
           lastBoardSlug = slug;
-          lastFilters = vals.slice(0, 4);
+          lastFilters = vals.slice(0, 5);
           baseline = true;
           if (t) clearTimeout(t);
           t = setTimeout(() => {
@@ -769,6 +771,7 @@ export const useAppStore = defineStore("app", {
       params.set("page_size", String(this.pageSize));
       if (this.listStatus) params.set("status", this.listStatus);
       if (this.listAssignee) params.set("assignee", this.listAssignee);
+      if (this.sortBy) params.set("sort", this.sortBy);
       const q = (this.search || "").trim();
       if (q) params.set("q", q);
       if (this.listArchived) params.set("archived", "1");
