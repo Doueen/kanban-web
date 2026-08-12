@@ -54,6 +54,21 @@ deploy.sh         # 一键构建部署
 - 写操作语义与 CLI 一致（业务约束如实传递：未运行任务不能发 heartbeat、父依赖未满足时拒绝 promote 等）
 - 多 board：`~/.hermes/kanban/boards/<slug>/kanban.db`，切换走 CLI
 
+## 质量门禁（M1-6 E11）
+
+- 前端静态检查 + 单元测试 + 构建（`cd web`）：
+
+  ```bash
+  npm run lint       # ESLint 9 flat config + eslint-plugin-vue（0 error 门槛）
+  npm run test:unit  # Vitest 纯函数骨架（utils.js / store.js）
+  npm run build      # Vite 构建 → web/dist/
+  ```
+
+- 后端测试：`python -m pytest tests/ -q`（db.py 查询 / kanban_cli.py 参数构造 / 分页契约 / scheduler API）
+- pre-commit 钩子（husky + lint-staged）：只检查暂存文件，eslint --fix + prettier 格式化后通过
+- GitHub Actions `.github/workflows/ci.yml`：push/PR → npm ci → lint → vitest → build → pytest；CI 不接触生产服务器
+- 部署前先跑 `./deploy.sh`（构建后校验 `dist/index.html` + assets 存在才 restart 服务）
+
 ## API 契约（任务列表分页）
 
 `GET /api/tasks`（HTTP Basic Auth；SQLite 直读，q 模糊匹配 title/body，默认排除 archived）

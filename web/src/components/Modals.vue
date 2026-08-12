@@ -72,7 +72,10 @@ async function confirmAssign() {
   if (!t) return;
   assignBusy.value = true;
   try {
-    await api(`/api/tasks/${encodeURIComponent(t.id)}/assign`, jsonOpts("POST", { assignee: assignValue.value }));
+    await api(
+      `/api/tasks/${encodeURIComponent(t.id)}/assign`,
+      jsonOpts("POST", { assignee: assignValue.value })
+    );
     snackbar(COPY.ok.assign, {
       actionText: "撤销",
       onAction: () => revertAssign(t.id),
@@ -90,7 +93,10 @@ async function confirmAssign() {
 async function revertAssign(id) {
   assignBusy.value = true;
   try {
-    await api(`/api/tasks/${encodeURIComponent(id)}/assign`, jsonOpts("POST", { assignee: assignPrev }));
+    await api(
+      `/api/tasks/${encodeURIComponent(id)}/assign`,
+      jsonOpts("POST", { assignee: assignPrev })
+    );
     ok(COPY.ok.assign);
     await store.refreshBoard();
     if (store.detailId) await store.openDetail(store.detailId);
@@ -127,10 +133,13 @@ async function confirmModel(action) {
   if (!t) return true;
   modelBusy.value = true;
   try {
-    await api(`/api/tasks/${encodeURIComponent(t.id)}/set-model`, jsonOpts("POST", {
-      model: modelName.value.trim() || null,
-      provider: modelProvider.value.trim() || null,
-    }));
+    await api(
+      `/api/tasks/${encodeURIComponent(t.id)}/set-model`,
+      jsonOpts("POST", {
+        model: modelName.value.trim() || null,
+        provider: modelProvider.value.trim() || null,
+      })
+    );
     ok(COPY.ok.model);
     await store.refreshBoard();
     if (store.detailId) await store.openDetail(store.detailId);
@@ -216,10 +225,20 @@ function closeEdit() {
     show-cancel-button
     :before-close="confirmNote"
     close-on-click-overlay
-    @update:show="(v) => { if (!v) closeNote(); }"
+    @update:show="
+      (v) => {
+        if (!v) closeNote();
+      }
+    "
   >
     <div style="padding: 8px 16px 16px">
-      <van-field v-model="noteText" type="textarea" rows="3" placeholder="可选备注…" :loading="noteBusy" />
+      <van-field
+        v-model="noteText"
+        type="textarea"
+        rows="3"
+        placeholder="可选备注…"
+        :loading="noteBusy"
+      />
     </div>
   </van-dialog>
 
@@ -229,7 +248,11 @@ function closeEdit() {
     position="bottom"
     round
     @click-overlay="closeAssign"
-    @update:show="(v) => { if (!v) closeAssign(); }"
+    @update:show="
+      (v) => {
+        if (!v) closeAssign();
+      }
+    "
   >
     <div class="popup-title">改指派</div>
     <van-picker
@@ -241,7 +264,9 @@ function closeEdit() {
       @click-overlay="closeAssign"
     />
     <div class="popup-actions">
-      <van-button block type="primary" :loading="assignBusy" @click="confirmAssign">确认</van-button>
+      <van-button block type="primary" :loading="assignBusy" @click="confirmAssign"
+        >确认</van-button
+      >
     </div>
   </van-popup>
 
@@ -252,11 +277,20 @@ function closeEdit() {
     show-cancel-button
     :before-close="confirmModel"
     close-on-click-overlay
-    @update:show="(v) => { if (!v) closeModel(); }"
+    @update:show="
+      (v) => {
+        if (!v) closeModel();
+      }
+    "
   >
     <div style="padding: 8px 16px 16px">
       <van-field v-model="modelName" label="模型" placeholder="模型名，清空则清除覆盖" />
-      <van-field v-model="modelProvider" label="Provider" placeholder="可选" style="margin-top: 8px" />
+      <van-field
+        v-model="modelProvider"
+        label="Provider"
+        placeholder="可选"
+        style="margin-top: 8px"
+      />
     </div>
   </van-dialog>
 
@@ -267,12 +301,36 @@ function closeEdit() {
     show-cancel-button
     :before-close="confirmEdit"
     close-on-click-overlay
-    @update:show="(v) => { if (!v) closeEdit(); }"
+    @update:show="
+      (v) => {
+        if (!v) closeEdit();
+      }
+    "
   >
     <div style="padding: 8px 16px 16px">
-      <van-field v-model="editResult" type="textarea" rows="3" label="结果 *" placeholder="Backfilled task result text" />
-      <van-field v-model="editSummary" type="textarea" rows="2" label="摘要（可选）" placeholder="Structured handoff summary" style="margin-top: 8px" />
-      <van-field v-model="editMetadata" type="textarea" rows="2" label="元数据（可选，JSON）" placeholder='{"changed_files": [...]}' style="margin-top: 8px" />
+      <van-field
+        v-model="editResult"
+        type="textarea"
+        rows="3"
+        label="结果 *"
+        placeholder="Backfilled task result text"
+      />
+      <van-field
+        v-model="editSummary"
+        type="textarea"
+        rows="2"
+        label="摘要（可选）"
+        placeholder="Structured handoff summary"
+        style="margin-top: 8px"
+      />
+      <van-field
+        v-model="editMetadata"
+        type="textarea"
+        rows="2"
+        label="元数据（可选，JSON）"
+        placeholder='{"changed_files": [...]}'
+        style="margin-top: 8px"
+      />
     </div>
   </van-dialog>
 </template>

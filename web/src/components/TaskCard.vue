@@ -17,7 +17,12 @@ const store = useAppStore();
 const titleParts = computed(() => highlightParts(props.task.title, props.highlight));
 const idHit = computed(() => {
   const q = (props.highlight || "").trim().toLowerCase();
-  return !!q && String(props.task.id || "").toLowerCase().includes(q);
+  return (
+    !!q &&
+    String(props.task.id || "")
+      .toLowerCase()
+      .includes(q)
+  );
 });
 const searchHit = computed(() => {
   const q = (props.highlight || "").trim();
@@ -95,7 +100,11 @@ async function quick(action) {
   swipeCell.value?.close();
   try {
     await store.runAction(props.task.id, action);
-    try { navigator.vibrate?.(10); } catch (_) { /* */ }
+    try {
+      navigator.vibrate?.(10);
+    } catch (_) {
+      /* */
+    }
   } catch (_) {
     /* toast handled in store */
   }
@@ -124,10 +133,19 @@ function onDragEnd() {
 </script>
 
 <template>
-  <van-swipe-cell :disabled="!showSwipe" ref="swipeCell">
+  <van-swipe-cell ref="swipeCell" :disabled="!showSwipe">
     <div
       class="card"
-      :class="['st-' + task.status, { 'long-press': longPressing, dragging: store.draggingId === task.id, 'no-anim': noAnim, 'search-hit': searchHit, 'search-id-hit': idHit }]"
+      :class="[
+        'st-' + task.status,
+        {
+          'long-press': longPressing,
+          dragging: store.draggingId === task.id,
+          'no-anim': noAnim,
+          'search-hit': searchHit,
+          'search-id-hit': idHit,
+        },
+      ]"
       draggable="true"
       tabindex="0"
       role="button"
@@ -146,12 +164,17 @@ function onDragEnd() {
       <template v-if="store.isMobile">
         <div class="mob-head">
           <div class="card-title mob-clamp">
-            <template v-for="(p, i) in titleParts" :key="i"><mark v-if="p.m" class="hl">{{ p.t }}</mark><template v-else>{{ p.t }}</template></template>
+            <template v-for="(p, i) in titleParts" :key="i"
+              ><mark v-if="p.m" class="hl">{{ p.t }}</mark
+              ><template v-else>{{ p.t }}</template></template
+            >
           </div>
           <span v-if="task.assignee" class="mob-avatar" :title="task.assignee">{{ avatar }}</span>
         </div>
         <div class="mob-meta">
-          <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority">P{{ task.priority }}</span>
+          <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority"
+            >P{{ task.priority }}</span
+          >
           <span class="mob-actions">
             <button
               v-if="store.mob.quickact && task.status !== 'done' && task.status !== 'archived'"
@@ -159,8 +182,17 @@ function onDragEnd() {
               title="完成"
               aria-label="完成"
               @click.stop="quick('complete')"
-            >✓</button>
-            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)" @touchstart.stop.prevent>⋯</button>
+            >
+              ✓
+            </button>
+            <button
+              class="menu-btn"
+              aria-label="操作菜单"
+              @click.stop="openMenu($event)"
+              @touchstart.stop.prevent
+            >
+              ⋯
+            </button>
           </span>
         </div>
       </template>
@@ -168,12 +200,19 @@ function onDragEnd() {
       <!-- 桌面端完整信息 -->
       <template v-else>
         <div class="card-title">
-          <template v-for="(p, i) in titleParts" :key="i"><mark v-if="p.m" class="hl">{{ p.t }}</mark><template v-else>{{ p.t }}</template></template>
+          <template v-for="(p, i) in titleParts" :key="i"
+            ><mark v-if="p.m" class="hl">{{ p.t }}</mark
+            ><template v-else>{{ p.t }}</template></template
+          >
         </div>
         <div class="card-meta">
           <div class="card-tags">
-            <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority">P{{ task.priority }}</span>
-            <span v-if="task.assignee" class="card-assignee" :title="task.assignee">@{{ task.assignee }}</span>
+            <span v-if="task.priority > 0" class="card-priority" :title="'优先级 ' + task.priority"
+              >P{{ task.priority }}</span
+            >
+            <span v-if="task.assignee" class="card-assignee" :title="task.assignee"
+              >@{{ task.assignee }}</span
+            >
           </div>
           <div class="card-tags">
             <span class="card-id" :class="{ 'hl-id': idHit }">{{ task.id }}</span>
@@ -183,8 +222,17 @@ function onDragEnd() {
               title="完成"
               aria-label="完成"
               @click.stop="quick('complete')"
-            >✓</button>
-            <button class="menu-btn" aria-label="操作菜单" @click.stop="openMenu($event)" @touchstart.stop.prevent>⋯</button>
+            >
+              ✓
+            </button>
+            <button
+              class="menu-btn"
+              aria-label="操作菜单"
+              @click.stop="openMenu($event)"
+              @touchstart.stop.prevent
+            >
+              ⋯
+            </button>
           </div>
         </div>
       </template>

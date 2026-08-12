@@ -65,7 +65,8 @@ async function submit() {
         :loading="loading"
         loading-text="验证中…"
         style="margin-top: 4px; min-height: 46px"
-      >登录</van-button>
+        >登录</van-button
+      >
     </form>
   </div>
 </template>

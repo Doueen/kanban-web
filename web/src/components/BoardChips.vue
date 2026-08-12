@@ -18,9 +18,17 @@ const chips = computed(() => {
 function select(v) {
   store.boardFilter = v;
   if (v !== "all") {
-    try { localStorage.setItem("kb-board-filter", v); } catch (_) { /* */ }
+    try {
+      localStorage.setItem("kb-board-filter", v);
+    } catch (_) {
+      /* */
+    }
   } else {
-    try { localStorage.removeItem("kb-board-filter"); } catch (_) { /* */ }
+    try {
+      localStorage.removeItem("kb-board-filter");
+    } catch (_) {
+      /* */
+    }
   }
 }
 </script>

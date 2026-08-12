@@ -95,7 +95,11 @@ watch(
     if (p.body) form.body = p.body;
     if (p.parent) form.parent = p.parent;
     if (p.swarmWorkers) {
-      swarm.workers = p.swarmWorkers.map((w) => ({ profile: w.profile || "", title: w.title || "", skills: w.skills || "" }));
+      swarm.workers = p.swarmWorkers.map((w) => ({
+        profile: w.profile || "",
+        title: w.title || "",
+        skills: w.skills || "",
+      }));
     }
   },
   { immediate: true }
@@ -107,7 +111,9 @@ watch(show, (v) => {
     form.body = store.createPrefill.body || "";
     form.parent = store.createPrefill.parent || "";
     /* 工作区默认：当前 board 配置了工作目录 → 直接用；否则跟随 kanban 默认 */
-    form.workspace = store.currentBoard?.default_workdir ? "dir:" + store.currentBoard.default_workdir : "";
+    form.workspace = store.currentBoard?.default_workdir
+      ? "dir:" + store.currentBoard.default_workdir
+      : "";
     /* 默认放入待梳理；"新建到此列"（指定了 status）时跟随指定列 */
     form.triage = store.createPrefill.status ? store.createPrefill.status === "triage" : true;
     swarm.goal = store.createPrefill.body || "";
@@ -200,7 +206,12 @@ async function submitSwarm() {
     workers: workers.map((w) => ({
       profile: w.profile,
       title: w.title || undefined,
-      skills: w.skills ? w.skills.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+      skills: w.skills
+        ? w.skills
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
     })),
     verifier: swarm.verifier.trim(),
     synthesizer: swarm.synthesizer.trim(),
@@ -243,7 +254,14 @@ async function submitSwarm() {
     <!-- 普通任务 -->
     <div v-if="mode === 0" class="popup-body create-form">
       <van-field v-model="form.title" label="标题" placeholder="任务标题" required clearable />
-      <van-field v-model="form.body" type="textarea" rows="3" autosize label="描述" placeholder="任务描述（支持换行 / 代码块 / 粗体）" />
+      <van-field
+        v-model="form.body"
+        type="textarea"
+        rows="3"
+        autosize
+        label="描述"
+        placeholder="任务描述（支持换行 / 代码块 / 粗体）"
+      />
       <van-field
         v-model="form.assignee"
         label="指派"
@@ -285,19 +303,45 @@ async function submitSwarm() {
 
     <!-- Swarm -->
     <div v-else class="popup-body create-form">
-      <van-field v-model="swarm.goal" type="textarea" rows="3" autosize label="目标（goal）*" placeholder="Swarm 最终要达成的结果" />
+      <van-field
+        v-model="swarm.goal"
+        type="textarea"
+        rows="3"
+        autosize
+        label="目标（goal）*"
+        placeholder="Swarm 最终要达成的结果"
+      />
       <div style="margin: 6px 0">
         <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px">Workers</div>
         <div v-for="(w, i) in swarm.workers" :key="i" class="worker-row">
-          <input v-model="w.profile" placeholder="profile *" aria-label="profile">
-          <input v-model="w.title" placeholder="title(可选)" aria-label="title">
-          <input v-model="w.skills" class="ww-skills" placeholder="skills,逗号分隔(可选)" aria-label="skills">
-          <button class="btn btn-sm worker-del" type="button" aria-label="移除" @click="delWorker(i)">✕</button>
+          <input v-model="w.profile" placeholder="profile *" aria-label="profile" />
+          <input v-model="w.title" placeholder="title(可选)" aria-label="title" />
+          <input
+            v-model="w.skills"
+            class="ww-skills"
+            placeholder="skills,逗号分隔(可选)"
+            aria-label="skills"
+          />
+          <button
+            class="btn btn-sm worker-del"
+            type="button"
+            aria-label="移除"
+            @click="delWorker(i)"
+          >
+            ✕
+          </button>
         </div>
-        <van-button size="small" icon="plus" style="margin-top: 4px" @click="addWorker">添加 Worker</van-button>
+        <van-button size="small" icon="plus" style="margin-top: 4px" @click="addWorker"
+          >添加 Worker</van-button
+        >
       </div>
       <van-field v-model="swarm.verifier" label="Verifier" placeholder="评审 profile" clearable />
-      <van-field v-model="swarm.synthesizer" label="Synthesizer" placeholder="汇总 profile" clearable />
+      <van-field
+        v-model="swarm.synthesizer"
+        label="Synthesizer"
+        placeholder="汇总 profile"
+        clearable
+      />
       <van-field
         :model-value="PRIORITY_ACTIONS[swarm.priority]?.name"
         label="优先级"

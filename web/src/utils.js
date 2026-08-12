@@ -11,13 +11,17 @@ export function persistBoardFilter(v) {
 }
 
 export function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
+  return String(s ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[c]
+  );
 }
 
 /* M1-5 E8: 搜索高亮分段 —— 返回 [{t, m}]，m=true 的段应包 <mark>（大小写不敏感） */
@@ -44,11 +48,17 @@ export function highlightParts(text, q) {
 
 /* M1-5 E8: 任务是否命中搜索（标题/ID） */
 export function taskMatchesSearch(task, q) {
-  const needle = String(q || "").trim().toLowerCase();
+  const needle = String(q || "")
+    .trim()
+    .toLowerCase();
   if (!needle) return true;
   return (
-    String(task.title || "").toLowerCase().includes(needle) ||
-    String(task.id || "").toLowerCase().includes(needle)
+    String(task.title || "")
+      .toLowerCase()
+      .includes(needle) ||
+    String(task.id || "")
+      .toLowerCase()
+      .includes(needle)
   );
 }
 
@@ -99,13 +109,16 @@ export function shortPayload(p) {
 
 /* minimal markdown: newline / code block / bold / inline code (no external lib) */
 /* 交付产物路径：`关键词：/abs/path` → 下载链接 */
-const DL_RE = /(?:交付文档|文档|成果|产物|文件|输出|报告|结果)\s*[:：]\s*(\/(?:[^\s，。、；;'"）)】\]]+))/g;
+const DL_RE =
+  /(?:交付文档|文档|成果|产物|文件|输出|报告|结果)\s*[:：]\s*(\/(?:[^\s，。、；;'"）)】\]]+))/g;
 
 function injectDlLinks(src) {
   const links = [];
   const out = src.replace(DL_RE, (m, path) => {
     const name = decodeURIComponent(path).split("/").pop() || path;
-    links.push(`<a class="dl-link" href="/api/download?path=${encodeURIComponent(path)}" target="_blank" rel="noopener">📄 ${esc(name)}</a>`);
+    links.push(
+      `<a class="dl-link" href="/api/download?path=${encodeURIComponent(path)}" target="_blank" rel="noopener">📄 ${esc(name)}</a>`
+    );
     return `\u0001${links.length - 1}\u0001`;
   });
   return { out, links };
@@ -125,7 +138,8 @@ export function mdToHtml(text) {
   let html = esc(src);
   const blocks = [];
   html = html.replace(/```([\s\S]*?)```/g, (_, code) => {
-    blocks.push(`<pre><code>${code}</code></pre>`);
+    /* 去掉围栏内首尾换行，避免 <pre> 内出现多余空行 */
+    blocks.push(`<pre><code>${code.replace(/^\n|\n$/g, "")}</code></pre>`);
     return `\u0000${blocks.length - 1}\u0000`;
   });
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");

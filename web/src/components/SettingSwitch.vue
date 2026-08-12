@@ -17,10 +17,7 @@ const emit = defineEmits(["update:modelValue"]);
     @click="emit('update:modelValue', !modelValue)"
   >
     <template #right-icon>
-      <van-switch
-        :model-value="modelValue"
-        @click.stop="emit('update:modelValue', !modelValue)"
-      />
+      <van-switch :model-value="modelValue" @click.stop="emit('update:modelValue', !modelValue)" />
     </template>
   </van-cell>
 </template>

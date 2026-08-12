@@ -7,7 +7,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write src",
+    "test:unit": "vitest run",
+    "prepare": "cd .. && husky"
   },
   "dependencies": {
     "pinia": "^2.1.7",
@@ -15,7 +20,23 @@
     "vue": "^3.5.13"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@vitejs/plugin-vue": "^5.2.1",
-    "vite": "^5.4.11"
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^9.33.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "vite": "^5.4.11",
+    "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "src/**/*.{js,vue}": [
+      "eslint --fix"
+    ],
+    "src/**/*.{js,vue,css,json,md}": [
+      "prettier --write"
+    ]
   }
 }

@@ -135,8 +135,13 @@ def test_api_tasks_envelope_uses_monkeypatched_db(tmp_path, monkeypatch):
     """API 层信封契约：page/page_size/total/total_pages 字段齐全（只读临时库）。"""
     monkeypatch.setenv("KANBAN_DB", str(tmp_path / "kanban.db"))
     import importlib
-    importlib.reload(app_module)
+    # 必须先 reload db 再 reload app_module：app.py 顶层 `import db` 从
+    # sys.modules 取绑定，顺序反了会拿到旧 db 模块（真实库路径），读到生产数据。
     importlib.reload(db)
+    importlib.reload(app_module)
+    # active board 非 default 时 current_db_path() 忽略 KANBAN_DB（走 boards/<slug>），
+    # 测试必须钉死路径，否则读到生产库（daily 板恰好有 6 条 todo，total 对不上）。
+    monkeypatch.setattr(db, "current_db_path", lambda: str(tmp_path / "kanban.db"))
     conn = sqlite3.connect(str(tmp_path / "kanban.db"))
     conn.executescript(SCHEMA)
     conn.executemany(

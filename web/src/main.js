@@ -32,7 +32,11 @@ async function downloadDeliverable(url) {
   if (!m) return;
   const path = decodeURIComponent(m[1]);
   let cred = null;
-  try { cred = JSON.parse(localStorage.getItem("kb-auth") || "null"); } catch (_) { /* */ }
+  try {
+    cred = JSON.parse(localStorage.getItem("kb-auth") || "null");
+  } catch (_) {
+    /* */
+  }
   if (!cred || !cred.u) {
     fail("请先登录");
     return;

@@ -50,7 +50,9 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
       >
         <span
           class="theme-swatch"
-          :style="{ background: `linear-gradient(135deg, ${t.bg} 0%, ${t.bg} 45%, ${t.accent} 46%, ${t.accent} 100%)` }"
+          :style="{
+            background: `linear-gradient(135deg, ${t.bg} 0%, ${t.bg} 45%, ${t.accent} 46%, ${t.accent} 100%)`,
+          }"
         ></span>
         <span>{{ t.label }}</span>
       </button>

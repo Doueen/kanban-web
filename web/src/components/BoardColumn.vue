@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useAppStore, actionForTarget, STATUS } from "../store";
-import { persistBoardFilter } from "../utils";
+import { persistBoardFilter, taskMatchesSearch } from "../utils";
 import { stopDragGhost } from "../dragGhost";
 import { fail, COPY } from "../feedback";
 import TaskCard from "./TaskCard.vue";
@@ -196,7 +196,12 @@ function onCardBeforeLeave(el) {
     @drop="onDrop"
   >
     <div class="column-head" @click="onHeadClick">
-      <span v-if="folded" class="fold-count" :class="{ 'has-tasks': col.count > 0, 'is-empty': col.count === 0 }">{{ col.count }}</span>
+      <span
+        v-if="folded"
+        class="fold-count"
+        :class="{ 'has-tasks': col.count > 0, 'is-empty': col.count === 0 }"
+        >{{ col.count }}</span
+      >
       <span class="dot"></span>
       <span class="column-title">{{ col.label }}</span>
       <span class="column-count">{{ col.count }}</span>
@@ -205,25 +210,45 @@ function onCardBeforeLeave(el) {
         :title="folded ? '展开' : '折叠'"
         :aria-label="folded ? '展开' : '折叠'"
         @click="toggleFold"
-      >{{ folded ? "▸" : "▾" }}</button>
+      >
+        {{ folded ? "▸" : "▾" }}
+      </button>
     </div>
 
     <TransitionGroup
-      tag="div"
       ref="scrollEl"
+      tag="div"
       class="column-body"
       :name="transName"
       @scroll="onVirtScroll"
       @before-leave="onCardBeforeLeave"
     >
       <div v-if="showEmpty" key="empty" class="empty" style="padding: 18px 4px; font-size: 12px">
-        <template v-if="searchQuery">{{ emptyText }} · 无匹配</template>
+        <template v-if="searchQuery">
+          {{ emptyText }} · 无匹配
+          <button class="btn empty-cta" @click="store.setView('list')">去列表页查看</button>
+        </template>
         <template v-else>{{ emptyText }}</template>
       </div>
       <template v-else>
-        <div v-if="useVirt" key="sp-top" :style="{ height: virt.start * ITEM_H + 'px', flex: '0 0 auto' }"></div>
-        <TaskCard v-for="(t, i) in shownTasks" :key="t.id" :task="t" :index="virt.start + i" :no-anim="useVirt" :highlight="searchQuery" />
-        <div v-if="useVirt" key="sp-bot" :style="{ height: (filteredTasks.length - virt.end) * ITEM_H + 'px', flex: '0 0 auto' }"></div>
+        <div
+          v-if="useVirt"
+          key="sp-top"
+          :style="{ height: virt.start * ITEM_H + 'px', flex: '0 0 auto' }"
+        ></div>
+        <TaskCard
+          v-for="(t, i) in shownTasks"
+          :key="t.id"
+          :task="t"
+          :index="virt.start + i"
+          :no-anim="useVirt"
+          :highlight="searchQuery"
+        />
+        <div
+          v-if="useVirt"
+          key="sp-bot"
+          :style="{ height: (filteredTasks.length - virt.end) * ITEM_H + 'px', flex: '0 0 auto' }"
+        ></div>
       </template>
     </TransitionGroup>
 

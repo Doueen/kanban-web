@@ -73,7 +73,11 @@ function onBoardScroll() {
 async function onRefresh() {
   await store.refreshBoard();
   refreshing.value = false;
-  try { navigator.vibrate?.(10); } catch (_) { /* */ }
+  try {
+    navigator.vibrate?.(10);
+  } catch (_) {
+    /* */
+  }
 }
 
 /* ---------- 左右滑动切列（仅单列模式，60px 阈值） ---------- */
@@ -114,7 +118,11 @@ function onTouchEnd(e) {
     if (!target) return;
     store.boardFilter = target;
     persistBoardFilter(target);
-    try { navigator.vibrate?.(15); } catch (_) { /* */ }
+    try {
+      navigator.vibrate?.(15);
+    } catch (_) {
+      /* */
+    }
     nextTick(() => updateDots());
   }
 }
@@ -134,16 +142,23 @@ watch(
     nextTick(updateDots);
   }
 );
-watch(() => store.board, () => {
-  ensureFilteredColExpanded(store.boardFilter);
-  nextTick(updateDots);
-});
+watch(
+  () => store.board,
+  () => {
+    ensureFilteredColExpanded(store.boardFilter);
+    nextTick(updateDots);
+  }
+);
 onMounted(() => {
   nextTick(updateDots);
   /* P1#7：移动端恢复最近使用列（校验存在性） */
   if (store.isMobile) {
     let saved = null;
-    try { saved = localStorage.getItem("kb-board-filter"); } catch (_) { /* */ }
+    try {
+      saved = localStorage.getItem("kb-board-filter");
+    } catch (_) {
+      /* */
+    }
     if (saved && store.board?.statuses.some((c) => c.status === saved)) {
       store.boardFilter = saved;
     }

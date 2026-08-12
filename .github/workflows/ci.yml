@@ -41,5 +41,5 @@ jobs:
 
       - name: pytest (db.py / kanban_cli.py / scheduler API)
         run: |
-          pip install pytest fastapi httpx pyyaml
+          pip install pytest fastapi httpx pyyaml python-multipart
           python -m pytest tests/ -q

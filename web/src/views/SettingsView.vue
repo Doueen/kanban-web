@@ -11,7 +11,9 @@ const store = useAppStore();
 const boards = computed(() => (store.boards || []).filter((b) => !b.archived));
 const archivedBoards = computed(() => (store.boards || []).filter((b) => b.archived));
 const cur = computed(() => store.currentBoard);
-const boardOpts = computed(() => boards.value.map((b) => ({ name: b.slug + (b.is_current ? " ●（当前）" : ""), value: b.slug })));
+const boardOpts = computed(() =>
+  boards.value.map((b) => ({ name: b.slug + (b.is_current ? " ●（当前）" : ""), value: b.slug }))
+);
 
 const newBoard = reactive({ slug: "", name: "", description: "", icon: "", color: "#5ff0e0" });
 
@@ -27,19 +29,27 @@ async function boardOp(label, fn) {
 }
 
 async function doSwitch(slug) {
-  await boardOp("切换", () => api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {})));
+  await boardOp("切换", () =>
+    api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {}))
+  );
 }
 async function doCreate() {
   const slug = newBoard.slug.trim();
-  if (!slug) { fail(COPY.validate.slug); return; }
+  if (!slug) {
+    fail(COPY.validate.slug);
+    return;
+  }
   await boardOp("创建", () =>
-    api("/api/boards", jsonOpts("POST", {
-      slug,
-      name: newBoard.name.trim() || undefined,
-      description: newBoard.description.trim() || undefined,
-      icon: newBoard.icon.trim() || undefined,
-      color: newBoard.color || undefined,
-    }))
+    api(
+      "/api/boards",
+      jsonOpts("POST", {
+        slug,
+        name: newBoard.name.trim() || undefined,
+        description: newBoard.description.trim() || undefined,
+        icon: newBoard.icon.trim() || undefined,
+        color: newBoard.color || undefined,
+      })
+    )
   );
   newBoard.slug = "";
   newBoard.name = "";
@@ -83,21 +93,38 @@ async function onBoardMenuSelect(a) {
     await doWorkdir(b.slug, null);
   } else if (a.op === "archive") {
     const c = COPY.confirm.archiveBoard(b.name || b.slug);
-    const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText });
+    const confirmed = await confirm({
+      title: c.title,
+      message: c.message,
+      confirmText: c.confirmText,
+    });
     if (!confirmed) return;
     await doArchive(b.slug);
   } else if (a.op === "delete") {
     const c = COPY.confirm.deleteBoard(b.name || b.slug);
-    const confirmed = await confirm({ title: c.title, message: c.message, confirmText: c.confirmText, danger: true });
+    const confirmed = await confirm({
+      title: c.title,
+      message: c.message,
+      confirmText: c.confirmText,
+      danger: true,
+    });
     if (!confirmed) return;
     await doDelete(b.slug);
   }
 }
 async function confirmRename() {
   const name = renameInput.value.trim();
-  if (!name) { fail(COPY.validate.name); return; }
+  if (!name) {
+    fail(COPY.validate.name);
+    return;
+  }
   renameShow.value = false;
-  await boardOp("重命名", () => api(`/api/boards/${encodeURIComponent(boardMenuTarget.value.slug)}/rename`, jsonOpts("POST", { name })));
+  await boardOp("重命名", () =>
+    api(
+      `/api/boards/${encodeURIComponent(boardMenuTarget.value.slug)}/rename`,
+      jsonOpts("POST", { name })
+    )
+  );
 }
 async function confirmWorkdir() {
   const b = boardMenuTarget.value;
@@ -113,10 +140,14 @@ async function doArchive(slug) {
   await boardOp("归档", () => api(`/api/boards/${encodeURIComponent(slug)}`, { method: "DELETE" }));
 }
 async function doDelete(slug) {
-  await boardOp("删除", () => api(`/api/boards/${encodeURIComponent(slug)}`, jsonOpts("DELETE", { delete: true })));
+  await boardOp("删除", () =>
+    api(`/api/boards/${encodeURIComponent(slug)}`, jsonOpts("DELETE", { delete: true }))
+  );
 }
 async function doRestore(slug) {
-  await boardOp("恢复", () => api(`/api/boards/${encodeURIComponent(slug)}/restore`, jsonOpts("POST", {})));
+  await boardOp("恢复", () =>
+    api(`/api/boards/${encodeURIComponent(slug)}/restore`, jsonOpts("POST", {}))
+  );
 }
 
 /* ---------- 通知订阅管理 ---------- */
@@ -145,7 +176,10 @@ function onNotifyTaskSelect(a) {
 
 async function loadNotifySubs() {
   const tid = notifyTask.value.trim();
-  if (!tid) { fail(COPY.validate.notifyTask); return; }
+  if (!tid) {
+    fail(COPY.validate.notifyTask);
+    return;
+  }
   notifyLoading.value = true;
   notifySubs.value = null;
   try {
@@ -161,11 +195,14 @@ async function loadNotifySubs() {
 async function delNotifySub(s) {
   const tid = notifyTask.value.trim();
   try {
-    await api(`/api/tasks/${encodeURIComponent(tid)}/notify`, jsonOpts("DELETE", {
-      platform: s.platform,
-      chat_id: s.chat_id || s.chatId,
-      thread_id: s.thread_id,
-    }));
+    await api(
+      `/api/tasks/${encodeURIComponent(tid)}/notify`,
+      jsonOpts("DELETE", {
+        platform: s.platform,
+        chat_id: s.chat_id || s.chatId,
+        thread_id: s.thread_id,
+      })
+    );
     ok(COPY.ok.unsubscribe);
     loadNotifySubs();
   } catch (err) {
@@ -189,10 +226,13 @@ async function runGc(action) {
   gcShow.value = false;
   loading("GC 执行中…", { duration: 0 });
   try {
-    const res = await api("/api/gc", jsonOpts("POST", {
-      event_retention_days: isNaN(ev) ? undefined : ev,
-      log_retention_days: isNaN(lg) ? undefined : lg,
-    }));
+    const res = await api(
+      "/api/gc",
+      jsonOpts("POST", {
+        event_retention_days: isNaN(ev) ? undefined : ev,
+        log_retention_days: isNaN(lg) ? undefined : lg,
+      })
+    );
     maintainOut.value = res.message || "GC 完成";
     ok(res.message || "GC 完成");
     return true;
@@ -247,11 +287,19 @@ function onMobChange(key, val) {
 
 /* ---------- 外观：跟随系统深色 ---------- */
 const sysDarkOn = ref(false);
-try { sysDarkOn.value = localStorage.getItem("kb-sys-dark") === "1"; } catch (_) { /* */ }
+try {
+  sysDarkOn.value = localStorage.getItem("kb-sys-dark") === "1";
+} catch (_) {
+  /* */
+}
 
 function onSysDark(val) {
   sysDarkOn.value = val;
-  try { localStorage.setItem("kb-sys-dark", val ? "1" : "0"); } catch (_) { /* */ }
+  try {
+    localStorage.setItem("kb-sys-dark", val ? "1" : "0");
+  } catch (_) {
+    /* */
+  }
   if (val) {
     const mq = matchMedia("(prefers-color-scheme: dark)");
     store.applyTheme(mq.matches ? "linear" : "bright", true);
@@ -264,7 +312,12 @@ function onSysDark(val) {
 /* ---------- 看板分类显示开关 ---------- */
 function onChipToggle(st) {
   store.toggleChip(st);
-  ok(store.hiddenChips.includes(st) ? "已隐藏「" + STATUS[st] + "」" : "已显示「" + STATUS[st] + "」", { duration: 1200 });
+  ok(
+    store.hiddenChips.includes(st)
+      ? "已隐藏「" + STATUS[st] + "」"
+      : "已显示「" + STATUS[st] + "」",
+    { duration: 1200 }
+  );
 }
 
 function logout() {
@@ -297,15 +350,17 @@ function logout() {
               <div class="board-item-sub">
                 <code class="mono">{{ b.slug }}</code>
                 <span v-if="b.total != null">· {{ b.total }} 任务</span>
-                <span v-if="b.default_workdir" class="board-item-wd" :title="b.default_workdir">· {{ b.default_workdir }}</span>
+                <span v-if="b.default_workdir" class="board-item-wd" :title="b.default_workdir"
+                  >· {{ b.default_workdir }}</span
+                >
               </div>
             </div>
-            <button
-              v-if="b.slug !== cur?.slug"
-              class="board-item-switch"
-              @click="doSwitch(b.slug)"
-            >切换</button>
-            <button class="board-item-menu" aria-label="管理 board" @click="openBoardMenu(b)">⋯</button>
+            <button v-if="b.slug !== cur?.slug" class="board-item-switch" @click="doSwitch(b.slug)">
+              切换
+            </button>
+            <button class="board-item-menu" aria-label="管理 board" @click="openBoardMenu(b)">
+              ⋯
+            </button>
           </div>
         </div>
         <div v-else class="empty" style="padding: 12px">暂无 board</div>
@@ -313,15 +368,18 @@ function logout() {
         <template v-if="archivedBoards.length">
           <h4>已归档（可恢复）</h4>
           <div class="board-list">
-            <div
-              v-for="b in archivedBoards"
-              :key="b.slug"
-              class="board-item archived"
-            >
-              <span class="board-item-dot" :style="{ background: b.color || 'var(--muted)' }"></span>
+            <div v-for="b in archivedBoards" :key="b.slug" class="board-item archived">
+              <span
+                class="board-item-dot"
+                :style="{ background: b.color || 'var(--muted)' }"
+              ></span>
               <div class="board-item-main">
-                <div class="board-item-name">{{ b.icon ? b.icon + " " : "" }}{{ b.name || b.slug }}</div>
-                <div class="board-item-sub"><code class="mono">{{ b.slug }}</code></div>
+                <div class="board-item-name">
+                  {{ b.icon ? b.icon + " " : "" }}{{ b.name || b.slug }}
+                </div>
+                <div class="board-item-sub">
+                  <code class="mono">{{ b.slug }}</code>
+                </div>
               </div>
               <button class="board-item-switch" @click="doRestore(b.slug)">恢复</button>
             </div>
@@ -332,7 +390,12 @@ function logout() {
       <div class="settings-block">
         <h4>创建 Board</h4>
         <div class="settings-form">
-          <van-field v-model="newBoard.slug" label="Slug" placeholder="my-project（kebab-case）*" clearable />
+          <van-field
+            v-model="newBoard.slug"
+            label="Slug"
+            placeholder="my-project（kebab-case）*"
+            clearable
+          />
           <van-field v-model="newBoard.name" label="名称" placeholder="可选" clearable />
           <van-field v-model="newBoard.description" label="描述" placeholder="可选" clearable />
           <van-field v-model="newBoard.icon" label="Icon" placeholder="可选，emoji" clearable />
@@ -349,15 +412,24 @@ function logout() {
       <div class="panel-head"><h3>通知订阅管理</h3></div>
       <div class="settings-block">
         <div class="settings-actions">
-          <van-field v-model="notifyTask" placeholder="任务 ID (t_xxxx)" style="flex: 1; max-width: 280px" />
+          <van-field
+            v-model="notifyTask"
+            placeholder="任务 ID (t_xxxx)"
+            style="flex: 1; max-width: 280px"
+          />
           <van-button @click="showNotifyPicker = true">选择任务</van-button>
-          <van-button type="primary" :loading="notifyLoading" @click="loadNotifySubs">查看</van-button>
+          <van-button type="primary" :loading="notifyLoading" @click="loadNotifySubs"
+            >查看</van-button
+          >
         </div>
         <div v-if="notifySubs" style="margin-top: 8px">
           <div v-if="notifySubs.length">
             <div v-for="(s, i) in notifySubs" :key="i" class="notify-row">
               <span class="notify-platform">{{ s.platform || "?" }}</span>
-              <span>{{ s.chat_id || s.chatId || "" }}{{ s.thread_id ? " · thread " + s.thread_id : "" }}</span>
+              <span
+                >{{ s.chat_id || s.chatId || ""
+                }}{{ s.thread_id ? " · thread " + s.thread_id : "" }}</span
+              >
               <button class="icon-del" title="取消订阅" @click="delNotifySub(s)">✕</button>
             </div>
           </div>
@@ -435,7 +507,8 @@ function logout() {
             :loading="schedRunning"
             :disabled="schedRunning"
             @click="runScheduler"
-          >立即调度</van-button>
+            >立即调度</van-button
+          >
           <span class="panel-note">触发一次调度器运行，立即拾取待调度任务</span>
         </div>
       </div>
@@ -448,10 +521,14 @@ function logout() {
       <div class="about">
         <div><b>Hermes Kanban Web</b> · v4（Vue 3 + Vant 重构）</div>
         <div class="kv" style="margin-top: 6px">
-          <dt>端口</dt><dd><code class="mono">9120</code></dd>
-          <dt>数据层</dt><dd>只读 SQLite + <code class="mono">hermes kanban</code> CLI 写操作</dd>
-          <dt>主题</dt><dd>{{ THEMES.map((t) => t.label).join(" · ") }}</dd>
-          <dt>轮询</dt><dd>看板 30s · 事件 5s</dd>
+          <dt>端口</dt>
+          <dd><code class="mono">9120</code></dd>
+          <dt>数据层</dt>
+          <dd>只读 SQLite + <code class="mono">hermes kanban</code> CLI 写操作</dd>
+          <dt>主题</dt>
+          <dd>{{ THEMES.map((t) => t.label).join(" · ") }}</dd>
+          <dt>轮询</dt>
+          <dd>看板 30s · 事件 5s</dd>
         </div>
         <div class="settings-actions" style="margin-top: 12px">
           <van-button type="danger" @click="logout">退出登录</van-button>
@@ -470,12 +547,32 @@ function logout() {
     />
 
     <!-- 重命名 / 工作目录对话框 -->
-    <van-dialog v-model:show="renameShow" title="重命名 board" show-cancel-button :before-close="(a) => { if (a === 'confirm') confirmRename(); return true; }">
+    <van-dialog
+      v-model:show="renameShow"
+      title="重命名 board"
+      show-cancel-button
+      :before-close="
+        (a) => {
+          if (a === 'confirm') confirmRename();
+          return true;
+        }
+      "
+    >
       <div style="padding: 8px 16px 16px">
         <van-field v-model="renameInput" label="名称" placeholder="新名称" />
       </div>
     </van-dialog>
-    <van-dialog v-model:show="workdirShow" title="设置工作目录" show-cancel-button :before-close="(a) => { if (a === 'confirm') confirmWorkdir(); return true; }">
+    <van-dialog
+      v-model:show="workdirShow"
+      title="设置工作目录"
+      show-cancel-button
+      :before-close="
+        (a) => {
+          if (a === 'confirm') confirmWorkdir();
+          return true;
+        }
+      "
+    >
       <div style="padding: 8px 16px 16px">
         <van-field v-model="workdirInput" label="路径" placeholder="/abs/path（留空清除）" />
       </div>
@@ -492,10 +589,22 @@ function logout() {
     />
 
     <!-- GC 弹窗 -->
-    <van-dialog v-model:show="gcShow" title="运行 GC" show-cancel-button :before-close="runGc" close-on-click-overlay>
+    <van-dialog
+      v-model:show="gcShow"
+      title="运行 GC"
+      show-cancel-button
+      :before-close="runGc"
+      close-on-click-overlay
+    >
       <div style="padding: 8px 16px 16px">
         <van-field v-model="gcEvents" type="number" label="事件保留天数" placeholder="30" />
-        <van-field v-model="gcLogs" type="number" label="日志保留天数" placeholder="30" style="margin-top: 8px" />
+        <van-field
+          v-model="gcLogs"
+          type="number"
+          label="日志保留天数"
+          placeholder="30"
+          style="margin-top: 8px"
+        />
       </div>
     </van-dialog>
   </section>

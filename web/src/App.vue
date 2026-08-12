@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useAppStore, STATUS_ORDER, STATUS, vantThemeVars } from "./store";
+import { useAppStore, vantThemeVars } from "./store";
 import { api, jsonOpts, setOnUnauthorized } from "./api";
 import { ok, fail, COPY } from "./feedback";
 
@@ -70,7 +70,10 @@ async function onBoardSelect(item) {
 
 /* ---------- 长按 FAB（P2#14）：400ms → 9 状态「新建到此列」 ---------- */
 const fabSheet = ref(false);
-const FAB_ACTIONS = STATUS_ORDER.map((s) => ({ name: `新建到「${STATUS[s]}」`, status: s }));
+/* M1-6 E11: 状态顺序/文案由 /api/board 派生（db.py 权威），未加载时回退硬编码 */
+const fabActions = computed(() =>
+  store.statusOrder.map((s) => ({ name: `新建到「${store.statusLabels[s] || s}」`, status: s }))
+);
 let fabTimer = null;
 let fabSuppress = 0;
 
@@ -215,6 +218,7 @@ onMounted(() => {
   store.initTheme();
   store.loadMob();
   store.loadCollapsed();
+  store.initTasksWatch(); // 分页列表：过滤/搜索/切板 → 重置第 1 页（防抖）+ URL ?page= 恢复
   if (store.authed) {
     store.startPolling();
     store.refreshBoard();
@@ -347,7 +351,7 @@ onUnmounted(() => {
     <van-action-sheet
       v-model:show="fabSheet"
       title="新建到此列"
-      :actions="FAB_ACTIONS"
+      :actions="fabActions"
       close-on-click-action
       @select="onFabAction"
     />

@@ -13,7 +13,7 @@ import { showToast, showConfirmDialog } from "vant";
 /* ---------- 颜色语义（清单 §2.2：成功绿 / 失败红 / 警示琥珀 / 危险红） ---------- */
 export const FB_COLORS = {
   danger: "#ff5c6c", // 不可逆操作确认按钮
-  warn: "#ffb86c",   // 可恢复操作确认按钮 / 警示
+  warn: "#ffb86c", // 可恢复操作确认按钮 / 警示
 };
 
 /* ---------- 文案常量（清单 §3 各条，集中管理，杜绝散落字符串） ---------- */
@@ -40,7 +40,8 @@ export const COPY = {
     workdirClear: "工作目录已清除",
     theme: "主题已切换",
     switched: (name) => `已切换到「${name}」`,
-    batch: (label, okCount, failCount) => `${label} ${okCount} 个${failCount ? "，失败 " + failCount : ""}`,
+    batch: (label, okCount, failCount) =>
+      `${label} ${okCount} 个${failCount ? "，失败 " + failCount : ""}`,
     download: "下载成功",
   },
   /* 失败统一「<操作>失败: <原因>」；服务端原因透传，前端不预判（清单 §1.2-2） */
@@ -91,7 +92,13 @@ export const COPY = {
     movedTo: (st) => `已移动到「${st}」`,
     cannotMoveTo: (st) => `无法移动到「${st}」`,
     noOtherBoard: "暂无其他看板",
-    loading: { specify: "AI 细化中…可能需要 1-3 分钟", decompose: "AI 分解中…可能需要 1-3 分钟", claim: "认领中…", heartbeat: "发送心跳中…", default: "处理中…" },
+    loading: {
+      specify: "AI 细化中…可能需要 1-3 分钟",
+      decompose: "AI 分解中…可能需要 1-3 分钟",
+      claim: "认领中…",
+      heartbeat: "发送心跳中…",
+      default: "处理中…",
+    },
   },
 };
 
@@ -211,7 +218,13 @@ export function fail(msg, { duration = 3000, retry, retryLabel } = {}) {
  * danger=true → 红色确认按钮（E6 永久删除 / B4 批量）；默认琥珀（B3 归档 / E4 看板归档）。
  * 取消静默返回 false；确认返回 true。
  */
-export function confirm({ title, message, confirmText = "确定", danger = false, confirmButtonColor } = {}) {
+export function confirm({
+  title,
+  message,
+  confirmText = "确定",
+  danger = false,
+  confirmButtonColor,
+} = {}) {
   const prevFocus = document.activeElement;
   return showConfirmDialog({
     title,

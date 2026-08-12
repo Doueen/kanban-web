@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# M1-6 E11: pre-commit 只检查暂存文件（lint-staged）
+cd web
+npx lint-staged

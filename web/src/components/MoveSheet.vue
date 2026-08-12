@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { useAppStore, STATUS_ORDER, STATUS, actionForTarget } from "../store";
+import { useAppStore, actionForTarget } from "../store";
 import { fail, COPY } from "../feedback";
 
 const store = useAppStore();
@@ -14,11 +14,17 @@ const show = computed({
 
 const task = computed(() => store.moveTask);
 
+/* M1-6 E11: 状态顺序/文案由 /api/board 派生（db.py 权威），未加载时回退硬编码 */
+const statusOrder = computed(() => store.statusOrder);
+const statusLabels = computed(() => store.statusLabels);
+const statusLabel = (st) => statusLabels.value[st] || st;
+
 const actions = computed(() => {
   const t = task.value;
   if (!t) return [];
   const list = [];
-  if (t.status !== "done" && t.status !== "archived") list.push({ action: "complete", label: "完成" });
+  if (t.status !== "done" && t.status !== "archived")
+    list.push({ action: "complete", label: "完成" });
   if (t.status !== "archived") list.push({ action: "archive", label: "归档" });
   return list;
 });
@@ -38,7 +44,7 @@ async function moveTo(st) {
   if (st === t.status) return;
   const move = actionForTarget(t, st);
   if (!move) {
-    fail(COPY.misc.cannotMoveTo(STATUS[st] || st));
+    fail(COPY.misc.cannotMoveTo(statusLabel(st)));
     return;
   }
   store.closeMove();
@@ -65,7 +71,7 @@ async function doAction(action) {
   <van-action-sheet v-model:show="show" title="移动到" close-on-click-action>
     <div class="move-grid">
       <button
-        v-for="st in STATUS_ORDER"
+        v-for="st in statusOrder"
         :key="st"
         class="move-item"
         :class="['st-' + st, { disabled: targetDisabled(st) }]"
@@ -73,13 +79,21 @@ async function doAction(action) {
         @click="moveTo(st)"
       >
         <span class="dot"></span>
-        <span>{{ STATUS[st] }}</span>
+        <span>{{ statusLabel(st) }}</span>
         <span v-if="st === task?.status" class="move-cur">✓</span>
       </button>
     </div>
     <div v-if="actions.length" class="move-actions">
-      <van-button size="small" type="success" @click="doAction(actions[0].action)">{{ actions[0].label }}</van-button>
-      <van-button v-if="actions[1]" size="small" type="warning" @click="doAction(actions[1].action)">{{ actions[1].label }}</van-button>
+      <van-button size="small" type="success" @click="doAction(actions[0].action)">{{
+        actions[0].label
+      }}</van-button>
+      <van-button
+        v-if="actions[1]"
+        size="small"
+        type="warning"
+        @click="doAction(actions[1].action)"
+        >{{ actions[1].label }}</van-button
+      >
     </div>
   </van-action-sheet>
 </template>

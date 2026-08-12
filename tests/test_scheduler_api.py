@@ -16,6 +16,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,8 @@ def fake_dispatch(monkeypatch):
     calls = {}
 
     def _fake(dry_run=False, max_spawn=None):
+        if calls.get("delay"):
+            time.sleep(calls["delay"])
         calls["dry_run"] = dry_run
         calls["max_spawn"] = max_spawn
         payload = {
@@ -170,6 +173,9 @@ def test_board_lock_busy_409(client, monkeypatch, fake_dispatch):
 
 def test_concurrent_6_requests_1x200_5x409(client, fake_dispatch):
     """并发 6 触发：进程内锁保证恰 1 个成功，其余 409（幂等拦截）。"""
+    # fake dispatch 需真实占用锁一段时间，否则第一个请求释放锁后
+    # 后续请求可能连续成功（微秒级完成 → 竞争不成立，偶发 2×200）。
+    fake_dispatch["delay"] = 0.3
     results = []
     barrier = threading.Barrier(6)
 
