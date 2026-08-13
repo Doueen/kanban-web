@@ -29,6 +29,14 @@ const searchHit = computed(() => {
   return !!q && taskMatchesSearch(props.task, q);
 });
 
+/* M2-1 S1: 同步中（乐观更新 pending）→ 微标 + 按钮禁用 + 禁拖 */
+const syncing = computed(() => !!store.pendingOps[props.task.id]);
+
+function onQuick(action) {
+  if (syncing.value) return;
+  quick(action);
+}
+
 const longPressing = ref(false);
 let lpTimer = null;
 let lpStart = null;
@@ -144,6 +152,7 @@ function onDragEnd() {
           'no-anim': noAnim,
           'search-hit': searchHit,
           'search-id-hit': idHit,
+          syncing,
         },
       ]"
       draggable="true"
@@ -169,6 +178,7 @@ function onDragEnd() {
               ><template v-else>{{ p.t }}</template></template
             >
           </div>
+          <span v-if="syncing" class="sync-badge" role="status">同步中</span>
           <span v-if="task.assignee" class="mob-avatar" :title="task.assignee">{{ avatar }}</span>
         </div>
         <div class="mob-meta">
@@ -181,13 +191,15 @@ function onDragEnd() {
               class="card-quick"
               title="完成"
               aria-label="完成"
-              @click.stop="quick('complete')"
+              :disabled="syncing"
+              @click.stop="onQuick('complete')"
             >
               ✓
             </button>
             <button
               class="menu-btn"
               aria-label="操作菜单"
+              :disabled="syncing"
               @click.stop="openMenu($event)"
               @touchstart.stop.prevent
             >
@@ -204,6 +216,7 @@ function onDragEnd() {
             ><mark v-if="p.m" class="hl">{{ p.t }}</mark
             ><template v-else>{{ p.t }}</template></template
           >
+          <span v-if="syncing" class="sync-badge" role="status">同步中</span>
         </div>
         <div class="card-meta">
           <div class="card-tags">
@@ -221,13 +234,15 @@ function onDragEnd() {
               class="card-quick"
               title="完成"
               aria-label="完成"
-              @click.stop="quick('complete')"
+              :disabled="syncing"
+              @click.stop="onQuick('complete')"
             >
               ✓
             </button>
             <button
               class="menu-btn"
               aria-label="操作菜单"
+              :disabled="syncing"
               @click.stop="openMenu($event)"
               @touchstart.stop.prevent
             >
@@ -239,15 +254,15 @@ function onDragEnd() {
     </div>
 
     <template v-if="showSwipe" #right>
-      <button class="swipe-act swipe-complete" @click="quick('complete')">
+      <button class="swipe-act swipe-complete" :disabled="syncing" @click="onQuick('complete')">
         <van-icon name="passed" />
         <span>完成</span>
       </button>
-      <button class="swipe-act swipe-archive" @click="quick('archive')">
+      <button class="swipe-act swipe-archive" :disabled="syncing" @click="onQuick('archive')">
         <van-icon name="folder-o" />
         <span>归档</span>
       </button>
-      <button class="swipe-act swipe-block" @click="quick('block')">
+      <button class="swipe-act swipe-block" :disabled="syncing" @click="onQuick('block')">
         <van-icon name="warning-o" />
         <span>阻塞</span>
       </button>

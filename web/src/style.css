@@ -3096,3 +3096,53 @@ select,
     margin-left: 2px;
   }
 }
+
+/* ===== M2-1 S1: 乐观更新「同步中」微标 + 禁用态（追加覆盖块，不重写既有选择器） ===== */
+.card.syncing {
+  opacity: 0.82;
+  border-color: color-mix(in srgb, var(--accent, #45e0cd) 35%, transparent) !important;
+}
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.7;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--accent, #45e0cd);
+  background: color-mix(in srgb, var(--accent, #45e0cd) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #45e0cd) 32%, transparent);
+}
+.sync-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: syncPulse 1s ease-in-out infinite;
+}
+@keyframes syncPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-badge::before {
+    animation: none;
+  }
+}
+.card-quick:disabled,
+.menu-btn:disabled,
+.swipe-act:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: auto;
+}

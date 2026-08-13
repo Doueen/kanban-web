@@ -106,7 +106,8 @@ async function onDrop(e) {
     return;
   }
   try {
-    await store.runAction(id, move.action, undefined);
+    /* M2-1 S1: 拖拽落点作为显式 targetStatus 传入 → 看板列乐观迁移 */
+    await store.runAction(id, move.action, undefined, props.col.status);
   } catch (_) {
     /* toast handled in store */
   }

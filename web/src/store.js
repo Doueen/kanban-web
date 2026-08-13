@@ -150,6 +150,25 @@ const UNDO_ACTIONS = {
   "request-review": "reopen-review",
 };
 
+/* M2-1 S1 乐观更新：动作 → 目标状态推导（菜单/快捷按钮等无显式目标时用；
+   MoveSheet/拖拽显式传 targetStatus，以实际落点为准；CLI 永远是权威，refreshBoard 合并） */
+const ACTION_TARGET = {
+  complete: "done",
+  block: "blocked",
+  unblock: "ready",
+  schedule: "scheduled",
+  promote: "ready",
+  "request-review": "review",
+  "request-changes": "ready",
+  "reopen-review": "ready",
+  archive: "archived",
+  reclaim: null,
+  heartbeat: null,
+};
+/* S1 10s 超时兜底：恢复原样继续后台等，响应到达后仅权威合并 */
+const OP_TIMEOUT_MS = 10000;
+let _opTimers = {}; // taskId -> timer 句柄；置 null 表示该任务已触发超时兜底
+
 export function actionForTarget(task, targetStatus) {
   if (targetStatus === task.status) return null;
   /* 目标动作与 CLI 动词一一对应（CLI 是写操作权威，M1-5 E10 灰化禁用依赖此表）：
@@ -438,6 +457,8 @@ export const useAppStore = defineStore("app", {
     /* 初始 true：首拉前的空窗不闪「没有匹配的任务」；fetchTasks 每次置 true、finally 置 false */
     tasksLoading: true,
     tasksError: "",
+    /* M2-1 S1: 同步中任务集合（乐观更新 pending：卡片微标 + 按钮禁用 + 双击防重） */
+    pendingOps: {},
   }),
 
   getters: {
@@ -838,8 +859,70 @@ export const useAppStore = defineStore("app", {
       return Promise.resolve();
     },
 
+    /* ---------- M2-1 S1 乐观更新基础设施 ---------- */
+    /* 看板列乐观迁移：源列移出 → 推入目标列（浅拷贝 + status 覆盖；原对象引用保留用于回滚）。
+       返回快照；无 board/无目标列时返回 null（该动作退化为纯等待，不做乐观）。 */
+    _optimisticMoveBoard(id, targetStatus) {
+      if (!this.board || !targetStatus) return null;
+      for (let ci = 0; ci < this.board.statuses.length; ci++) {
+        const col = this.board.statuses[ci];
+        const idx = col.tasks.findIndex((t) => t.id === id);
+        if (idx === -1) continue;
+        const task = col.tasks[idx];
+        const snap = {
+          task,
+          fromStatus: col.status,
+          fromIndex: idx,
+          targetStatus,
+          targetInserted: false,
+        };
+        col.tasks.splice(idx, 1);
+        col.count = Math.max(0, (col.count || 0) - 1);
+        const target = this.board.statuses.find((c) => c.status === targetStatus);
+        if (target && targetStatus !== col.status) {
+          target.tasks.push({ ...task, status: targetStatus });
+          target.count = (target.count || 0) + 1;
+          snap.targetInserted = true;
+        }
+        return snap;
+      }
+      return null;
+    },
+    /* 快照回滚：目标列移除乐观副本 → 源列原位恢复（失败 <1s 还原） */
+    _rollbackOptimistic(snap) {
+      if (!snap || !this.board) return;
+      const target = this.board.statuses.find((c) => c.status === snap.targetStatus);
+      if (target && snap.targetInserted) {
+        const idx = target.tasks.findIndex((t) => t.id === snap.task.id);
+        if (idx >= 0) {
+          target.tasks.splice(idx, 1);
+          target.count = Math.max(0, (target.count || 0) - 1);
+        }
+      }
+      const from = this.board.statuses.find((c) => c.status === snap.fromStatus);
+      if (from) {
+        from.tasks.splice(Math.min(snap.fromIndex, from.tasks.length), 0, snap.task);
+        from.count = (from.count || 0) + 1;
+      }
+    },
+    /* 超时兜底：恢复原样 + 解锁 UI，继续后台等；响应到达后仅做权威合并 */
+    _timeoutFallback(id, snapBoard, removed) {
+      if (!this.pendingOps[id]) return;
+      delete this.pendingOps[id];
+      this._rollbackOptimistic(snapBoard);
+      if (removed) this._reconcileTasks(true);
+      _opTimers[id] = null;
+    },
+
     /* ---------- task actions ---------- */
-    async runAction(id, action, note) {
+    /* M2-1 S1 乐观更新统一入口：
+       - pendingOps 串行化同一任务（双击/多入口防重发）；
+       - POST 前本地同构变更（看板列迁移 + 列表页移除），卡片「同步中」微标 + 按钮禁用；
+       - 成功以服务端响应为权威（refreshBoard 合并）；失败快照回滚 + 失败 toast + 重试按钮；
+       - 10s 超时兜底：恢复原样、解锁 UI，响应到达后仅权威合并。 */
+    async runAction(id, action, note, targetStatus) {
+      /* 同一任务 pending 串行化：进行中直接忽略（消灭双击双发） */
+      if (this.pendingOps[id]) return null;
       if (action === "archive") {
         const c = COPY.confirm.archiveTask;
         const confirmed = await confirm({
@@ -852,13 +935,30 @@ export const useAppStore = defineStore("app", {
       if (!note && action === "block") note = "via web";
       if (!note && action === "schedule") note = "scheduled via web";
       if (!note && ["promote", "request-changes"].includes(action)) note = "via web";
-      /* 乐观更新（仅当前分页）：状态变更任务先从页内移除，成功后重拉对齐 */
+      /* 目标状态：显式传入（MoveSheet/拖拽落点）优先，否则按动作推导 */
+      const tStatus = targetStatus || ACTION_TARGET[action] || null;
+      /* 乐观更新：看板列迁移 + 列表页移除（快照留作回滚） */
+      const snapBoard = tStatus ? this._optimisticMoveBoard(id, tStatus) : null;
       const removed = this._optimisticRemoveTask(id);
+      this.pendingOps[id] = true;
+      const timer = setTimeout(() => this._timeoutFallback(id, snapBoard, removed), OP_TIMEOUT_MS);
+      _opTimers[id] = timer;
+      const settle = () => {
+        delete this.pendingOps[id];
+        if (_opTimers[id] && _opTimers[id] !== null) clearTimeout(_opTimers[id]);
+        delete _opTimers[id];
+      };
       try {
         const res = await api(
           `/api/tasks/${encodeURIComponent(id)}/action`,
           jsonOpts("POST", { action, note })
         );
+        const timedOut = _opTimers[id] === null; // 超时兜底已执行：不再重复反馈
+        settle();
+        if (timedOut) {
+          await this.refreshBoard(); // 仅权威合并
+          return res;
+        }
         const label = actionLabel(action);
         const undo = UNDO_ACTIONS[action];
         if (undo) {
@@ -877,29 +977,68 @@ export const useAppStore = defineStore("app", {
         await this._reconcileTasks(removed);
         return res;
       } catch (err) {
-        await this._reconcileTasks(removed); // 失败：重拉恢复真实状态
-        /* M2-1/B1：失败 toast（3000ms）内嵌「重试」按钮，重试原动作 */
+        const timedOut = _opTimers[id] === null;
+        settle();
+        if (timedOut) {
+          /* 兜底后失败：展示已恢复原样，仅提示失败（不重复回滚） */
+          await this.refreshBoard();
+          fail(COPY.fail("操作", err.message));
+          throw err;
+        }
+        /* M2-1 S1：失败快照回滚（<1s 还原原列原位）+ 失败 toast + 重试按钮 */
+        this._rollbackOptimistic(snapBoard);
+        await this._reconcileTasks(removed);
         fail(COPY.fail("操作", err.message), {
-          retry: () => this.runAction(id, action, note),
+          retry: () => this.runAction(id, action, note, targetStatus),
         });
         throw err;
       }
     },
     async runExtended(id, kind, payload = {}) {
+      /* claim 也做乐观更新（ready→running）；specify/decompose/heartbeat 保持 loading */
+      if (this.pendingOps[id]) return null;
       loading(COPY.misc.loading[kind] || COPY.misc.loading.default);
-      /* claim 会变更状态（ready→running）→ 乐观移除当前页；specify/decompose/heartbeat 不改变状态 */
+      const tStatus = kind === "claim" ? "running" : null;
+      const snapBoard = tStatus ? this._optimisticMoveBoard(id, tStatus) : null;
       const removed = kind === "claim" ? this._optimisticRemoveTask(id) : false;
+      if (tStatus) {
+        this.pendingOps[id] = true;
+        const timer = setTimeout(
+          () => this._timeoutFallback(id, snapBoard, removed),
+          OP_TIMEOUT_MS
+        );
+        _opTimers[id] = timer;
+      }
+      const settle = () => {
+        delete this.pendingOps[id];
+        if (_opTimers[id] && _opTimers[id] !== null) clearTimeout(_opTimers[id]);
+        delete _opTimers[id];
+      };
       try {
         const res = await api(
           `/api/tasks/${encodeURIComponent(id)}/${kind}`,
           jsonOpts("POST", payload)
         );
+        const timedOut = _opTimers[id] === null;
+        settle();
+        if (timedOut) {
+          await this.refreshBoard();
+          return res;
+        }
         ok(res.message || actionLabel(kind) || "完成");
         await this.refreshBoard();
         if (this.detailId) await this.openDetail(this.detailId);
         await this._reconcileTasks(removed);
         return res;
       } catch (err) {
+        const timedOut = _opTimers[id] === null;
+        settle();
+        if (timedOut) {
+          await this.refreshBoard();
+          fail(COPY.failShort(err.message));
+          throw err;
+        }
+        this._rollbackOptimistic(snapBoard);
         await this._reconcileTasks(removed);
         fail(COPY.failShort(err.message));
         throw err;

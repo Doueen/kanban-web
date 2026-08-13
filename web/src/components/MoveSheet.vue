@@ -14,6 +14,9 @@ const show = computed({
 
 const task = computed(() => store.moveTask);
 
+/* M2-1 S1: 同步中（乐观 pending）→ 目标按钮禁用，避免同任务重复提交 */
+const syncing = computed(() => !!store.pendingOps[task.value?.id]);
+
 /* M1-6 E11: 状态顺序/文案由 /api/board 派生（db.py 权威），未加载时回退硬编码 */
 const statusOrder = computed(() => store.statusOrder);
 const statusLabels = computed(() => store.statusLabels);
@@ -49,7 +52,8 @@ async function moveTo(st) {
   }
   store.closeMove();
   try {
-    await store.runAction(t.id, move.action);
+    /* M2-1 S1: 显式目标状态传入 → 看板列乐观迁移 + 同步中微标 */
+    await store.runAction(t.id, move.action, undefined, st);
   } catch (_) {
     /* toast handled in store */
   }
@@ -74,8 +78,8 @@ async function doAction(action) {
         v-for="st in statusOrder"
         :key="st"
         class="move-item"
-        :class="['st-' + st, { disabled: targetDisabled(st) }]"
-        :disabled="targetDisabled(st)"
+        :class="['st-' + st, { disabled: targetDisabled(st) || syncing }]"
+        :disabled="targetDisabled(st) || syncing"
         @click="moveTo(st)"
       >
         <span class="dot"></span>
@@ -84,13 +88,18 @@ async function doAction(action) {
       </button>
     </div>
     <div v-if="actions.length" class="move-actions">
-      <van-button size="small" type="success" @click="doAction(actions[0].action)">{{
-        actions[0].label
-      }}</van-button>
+      <van-button
+        size="small"
+        type="success"
+        :disabled="syncing"
+        @click="doAction(actions[0].action)"
+        >{{ actions[0].label }}</van-button
+      >
       <van-button
         v-if="actions[1]"
         size="small"
         type="warning"
+        :disabled="syncing"
         @click="doAction(actions[1].action)"
         >{{ actions[1].label }}</van-button
       >
