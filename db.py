@@ -343,6 +343,30 @@ def get_events(since=None, kinds=None, limit=100, db_path=None):
     return out
 
 
+def get_events_after(after_id=None, kinds=None, limit=100, db_path=None):
+    """Events ascending by event id, resumable via exclusive id cursor (S3/S6).
+
+    Event ids are monotonically increasing rowids, so an id cursor is exact
+    (no same-second duplicates/skips like a created_at cursor).
+    """
+    sql = "SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE 1=1"
+    params = []
+    if after_id is not None:
+        sql += " AND id > ?"
+        params.append(int(after_id))
+    if kinds:
+        sql += " AND kind IN (%s)" % ",".join("?" * len(kinds))
+        params.extend(kinds)
+    sql += " ORDER BY id ASC LIMIT ?"
+    params.append(limit)
+    with connect(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    out = [dict(r) for r in rows]
+    for e in out:
+        e["payload"] = _parse_payload(e.get("payload"))
+    return out
+
+
 def stats_fallback(db_path=None):
     """SQLite fallback for `hermes kanban stats --json`."""
     now = int(time.time())

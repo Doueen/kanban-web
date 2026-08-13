@@ -154,8 +154,10 @@ function onVis() {
   if (document.hidden) {
     store.stopPolling();
     store.stopEventPolling();
+    store.stopSse(); // M2-3 S3: 隐藏页签暂停 SSE 长连接
   } else {
     store.startPolling();
+    store.startSse(); // 恢复可见 → 重连 SSE（降级轮询由 startPolling 兜底）
     store.refreshBoard();
     if (store.view === "stats") {
       store.startEventPolling();
@@ -229,6 +231,7 @@ onMounted(() => {
   store.initTasksWatch(); // 分页列表：过滤/搜索/切板 → 重置第 1 页（防抖）+ URL ?page= 恢复
   if (store.authed) {
     store.startPolling();
+    store.initSse(); // M2-3 S3: 启动 SSE 推送（可见性暂停/恢复由 onVis 处理）
     store.refreshBoard();
     store.loadBoards();
   }

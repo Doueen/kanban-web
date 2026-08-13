@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/hermes/kanban-web
 EnvironmentFile=/opt/hermes/kanban-web/.env
-ExecStart=/opt/hermes/kanban-web/venv/bin/uvicorn app:app --host 0.0.0.0 --port 9120
+ExecStart=/opt/hermes/kanban-web/venv/bin/uvicorn app:app --host 0.0.0.0 --port 9120 --timeout-graceful-shutdown 5
 Restart=always
 RestartSec=3
 

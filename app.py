@@ -12,12 +12,19 @@ import secrets
 import shutil
 import sys
 import threading
+import time as _time
 from pathlib import Path
 
 import yaml
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -587,6 +594,75 @@ def api_diagnostics(severity: str = None, task: str = None):
 def api_events(since: int = None, kinds: str = None):
     kind_list = [k.strip() for k in (kinds or "").split(",") if k.strip()] or None
     return db.get_events(since=since, kinds=kind_list)
+
+
+# --- M2-3 S3: SSE 事件推送（含降级轮询兜底） ---
+SSE_POLL_SECONDS = 2.0   # 单 worker 内轮询 DB 周期
+SSE_KEEPALIVE_SECONDS = 15.0  # 无事件时的保活注释行间隔（同时探测死连接）
+SSE_NOISE_KINDS = {"heartbeat"}  # 排除心跳噪音事件
+
+
+@app.get("/api/events/stream", dependencies=[Depends(require_auth)])
+def api_events_stream(request: Request, limit: int = 0):
+    """Server-Sent Events stream of board events.
+
+    - 轮询只读 SQLite（无 CLI 子进程），2s 周期；
+    - 事件按 id 单调游标续传（Last-Event-ID 请求头 / 每条 SSE 自带 id:）；
+    - 排除 heartbeat 噪音事件；
+    - 空闲时每 15s 发 `: ping` 注释行保活；
+    - 客户端断开 → 生成器 GeneratorExit → 线程退出；
+    - `limit`（默认 0=无限）用于测试/调试：发满 N 条事件后自然结束流。
+    """
+
+    def event_stream():
+        last_id = 0
+        lei = (request.headers.get("last-event-id") or "").strip()
+        if lei.isdigit():
+            last_id = int(lei)
+        last_keepalive = _time.time()
+        emitted = 0
+        while True:
+            try:
+                events = db.get_events_after(after_id=last_id, kinds=None, limit=50)
+                for ev in events:
+                    if ev.get("kind") in SSE_NOISE_KINDS:
+                        continue
+                    last_id = ev["id"]
+                    payload = json.dumps(
+                        {
+                            "id": ev["id"],
+                            "kind": ev.get("kind"),
+                            "task_id": ev.get("task_id"),
+                        },
+                        ensure_ascii=False,
+                    )
+                    yield "id: %d\ndata: %s\n\n" % (ev["id"], payload)
+                    emitted += 1
+                    if limit and emitted >= limit:
+                        return
+                now = _time.time()
+                if now - last_keepalive >= SSE_KEEPALIVE_SECONDS:
+                    last_keepalive = now
+                    yield ": ping\n\n"
+                else:
+                    _time.sleep(SSE_POLL_SECONDS)
+            except GeneratorExit:
+                break
+            except Exception:
+                # DB 瞬时错误（busy 等）：小睡后继续，不中断长连接
+                try:
+                    _time.sleep(SSE_POLL_SECONDS)
+                except Exception:
+                    break
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/gc", dependencies=[Depends(require_auth)])

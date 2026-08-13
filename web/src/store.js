@@ -3,12 +3,16 @@ import { defineStore } from "pinia";
 import { watch } from "vue";
 import { api, apiText, jsonOpts } from "./api";
 import { ok, fail, confirm, loading, snackbar, COPY } from "./feedback";
+import { createEventSource } from "./sse";
 
 /* M1-2 E5: refreshBoard in-flight 去重 + 单调序号竞态守卫 */
 let _boardSeq = 0;
 let _boardInFlight = null;
 /* 分页任务列表竞态守卫（fetchTasks 过期响应丢弃） */
 let _tasksSeq = 0;
+/* M2-3 S3: SSE 实例 + 300ms 合并节流句柄（模块级，非响应式） */
+let _sse = null;
+let _sseThrottle = null;
 
 export const STATUS_ORDER = [
   "triage",
@@ -426,6 +430,8 @@ export const useAppStore = defineStore("app", {
     boardError: "",
     lastSyncedAt: null,
     online: typeof navigator !== "undefined" ? navigator.onLine !== false : true,
+    /* M2-3 S3: SSE 已连接（连接期间 60s 轮询暂停，空转轮询归零） */
+    sseActive: false,
     theme: "linear",
     mob: {
       chips: true,
@@ -554,6 +560,7 @@ export const useAppStore = defineStore("app", {
       }
       this.authed = true;
       this.startPolling();
+      this.startSse();
     },
     logout() {
       try {
@@ -564,6 +571,7 @@ export const useAppStore = defineStore("app", {
       this.authed = false;
       this.stopPolling();
       this.stopEventPolling();
+      this.stopSse();
       this.detailId = null;
       this.detailOpts = {};
       this.menuVisible = false;
@@ -1135,9 +1143,10 @@ export const useAppStore = defineStore("app", {
     startPolling() {
       if (this.boardTimer) return;
       /* M1-3 E6: 轮询 30s → 60s（ETag 条件请求降频）；
-         M1-4 E7: 断网时暂停轮询 */
+         M1-4 E7: 断网时暂停轮询；
+         M2-3 S3: SSE 连接期间暂停 60s 轮询（空转轮询归零），SSE 断开自动恢复兜底 */
       this.boardTimer = setInterval(() => {
-        if (!document.hidden && this.authed && this.online) this.refreshBoard();
+        if (!this.sseActive && !document.hidden && this.authed && this.online) this.refreshBoard();
       }, 60000);
     },
     stopPolling() {
@@ -1146,11 +1155,51 @@ export const useAppStore = defineStore("app", {
         this.boardTimer = null;
       }
     },
+    /* ---------- M2-3 S3: SSE 事件推送 ---------- */
+    startSse() {
+      if (_sse || !this.authed) return;
+      const vm = this;
+      _sse = createEventSource({
+        onOpen: () => {
+          /* 连接成功：恢复 SSE 推送模式（暂停 60s 轮询兜底） */
+          vm.sseActive = true;
+        },
+        onEvent: () => {
+          /* 300ms 合并节流：突发事件批（如批量操作）只触发一次 refreshBoard */
+          if (document.hidden || _sseThrottle) return;
+          _sseThrottle = setTimeout(() => {
+            _sseThrottle = null;
+            vm.refreshBoard();
+          }, 300);
+        },
+        onError: () => {
+          /* 连接失败：SSE 侧自动定时重连；期间降级到 60s 轮询兜底（sseActive=false） */
+          vm.sseActive = false;
+        },
+      });
+    },
+    stopSse() {
+      if (_sse) {
+        _sse.close();
+        _sse = null;
+      }
+      if (_sseThrottle) {
+        clearTimeout(_sseThrottle);
+        _sseThrottle = null;
+      }
+      this.sseActive = false;
+    },
+    /* 生命周期启动（App.vue onMounted 调用一次）：
+       可见性暂停/恢复由 App.vue onVis 处理（stopSse/startSse） */
+    initSse() {
+      this.startSse();
+    },
     /* M1-4 E7: 连接状态变化——断网暂停轮询，恢复立即刷新 */
     setOnline(v) {
       this.online = !!v;
       if (v) {
         this.startPolling();
+        this.startSse(); // M2-3 S3: 网络恢复 → 重连 SSE
         this.refreshBoard(true);
       }
     },
