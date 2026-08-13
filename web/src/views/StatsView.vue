@@ -8,12 +8,16 @@ import { fail } from "../feedback";
 const store = useAppStore();
 const refreshing = ref(false);
 const stats = ref(null);
+const loading = ref(false);
 
 async function loadStats() {
+  loading.value = true;
   try {
     stats.value = await api("/api/stats");
   } catch (err) {
     fail("统计加载失败: " + err.message);
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -85,7 +89,10 @@ onMounted(() => {
 <template>
   <section class="view" aria-label="统计">
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-      <div class="stats-grid">
+      <div v-if="loading" class="stats-skeleton">
+        <van-skeleton title :row="8" />
+      </div>
+      <div v-else class="stats-grid">
         <!-- 7 天完成趋势 -->
         <div class="panel">
           <div class="panel-head">

@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 import { watch } from "vue";
 import { api, apiText, jsonOpts } from "./api";
 import { ok, fail, confirm, loading, snackbar, COPY } from "./feedback";
+import { persistBoardFilter } from "./utils";
 import { createEventSource } from "./sse";
 
 /* M1-2 E5: refreshBoard in-flight 去重 + 单调序号竞态守卫 */
@@ -13,6 +14,8 @@ let _tasksSeq = 0;
 /* M2-3 S3: SSE 实例 + 300ms 合并节流句柄（模块级，非响应式） */
 let _sse = null;
 let _sseThrottle = null;
+/* M2-4 S7: 详情已同步的看板字段指纹（外部变更 → 详情自动重拉） */
+let _detailKey = "";
 
 export const STATUS_ORDER = [
   "triage",
@@ -425,7 +428,7 @@ export const useAppStore = defineStore("app", {
     detailId: null,
     detailOpts: {},
     events: [],
-    eventSince: 0,
+    eventAfter: 0, // M2-4 S6: 事件游标改事件 ID（单调，同秒事件不丢不重）
     /* M1-4 E7: 刷新失败可见化 + 连接状态 */
     boardError: "",
     lastSyncedAt: null,
@@ -449,6 +452,14 @@ export const useAppStore = defineStore("app", {
       }
     })(),
     collapsed: {},
+    /* t_bcf7c7bd: 一键隐藏空列模式（本地持久化 kb-hide-empty） */
+    hideEmpty: (() => {
+      try {
+        return localStorage.getItem("kb-hide-empty") === "1";
+      } catch (_) {
+        return false;
+      }
+    })(),
     draggingId: null,
     showCreate: false,
     createPrefill: {},
@@ -658,6 +669,47 @@ export const useAppStore = defineStore("app", {
       return false;
     },
 
+    /* ---------- t_bcf7c7bd: 一键隐藏/恢复空列 ----------
+       模式开关（hideEmpty，持久化 kb-hide-empty）：
+       - 开启：立即折叠所有空列（force，含此前手动展开的）；非空列永不折叠。
+       - 关闭：恢复所有空列（仅展开 collapsed 显式为 true 的空列，不动移动端 autofold 默认态）。
+       - 开启期间每次看板数据到达/乐观迁移后由 _enforceHideEmpty(false) 维持不变量：
+         ① 空列保持折叠（尊重手动展开：collapsed[status]!==false 才折）；
+         ② 折叠中的非空列立即展开（拖入/新建/移动后卡片绝不藏在折叠列里）；
+         ③ 单列筛选模式下的当前列永不折叠（避免 56px 窄条）。
+       折叠状态仍写入既有 collapsed 映射（kb-collapsed），与列头折叠按钮同源。 */
+    toggleHideEmpty() {
+      this.hideEmpty = !this.hideEmpty;
+      try {
+        localStorage.setItem("kb-hide-empty", this.hideEmpty ? "1" : "0");
+      } catch (_) {
+        /* */
+      }
+      if (this.hideEmpty) this._enforceHideEmpty(true);
+      else this._restoreEmptyCols();
+    },
+    _enforceHideEmpty(force) {
+      if (!this.board) return;
+      for (const c of this.board.statuses) {
+        /* 单列筛选模式下当前列不参与折叠 */
+        if (this.boardFilter !== "all" && c.status === this.boardFilter) continue;
+        if (c.count === 0) {
+          if (force || this.collapsed[c.status] !== false) this.setCollapsed(c.status, true);
+        } else if (this.isColFolded(c)) {
+          /* 非空列绝不隐藏：拖入/新建/移动后立即展开 */
+          this.setCollapsed(c.status, false);
+        }
+      }
+    },
+    _restoreEmptyCols() {
+      if (!this.board) return;
+      for (const c of this.board.statuses) {
+        if (c.count === 0 && this.collapsed[c.status] === true) {
+          this.setCollapsed(c.status, false);
+        }
+      }
+    },
+
     /* ---------- data ---------- */
     /* M1-2 E5: 执行中重复调用返回同一 Promise；force 时绕过去重（手动刷新）。
        M1-3 E4: 普通轮询不带 force=1；仅手动刷新/切换带 force。 */
@@ -690,6 +742,10 @@ export const useAppStore = defineStore("app", {
           ) {
             this.boardFilter = "all";
           }
+          /* M2-4 S7: 详情监听 board 变更刷新（外部 CLI/SSE 改动状态/指派/标题 → 详情自动重拉） */
+          this._syncDetailWithBoard();
+          /* t_bcf7c7bd: 隐藏空列模式开启时，数据到达即维持不变量（空列折、非空列展） */
+          if (this.hideEmpty) this._enforceHideEmpty(false);
         }
         /* 后台/CLI 切换 board 同步：左上角标题及时更新 */
         if (!this.currentBoard || cur.slug !== this.currentBoard.slug) {
@@ -722,6 +778,19 @@ export const useAppStore = defineStore("app", {
     },
     async switchBoard(slug) {
       await api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {}));
+      /* M2-4 S7: 切换 board 重置详情/筛选，防残留（详情/筛选属于旧 board） */
+      this.detailId = null;
+      this.detailOpts = {};
+      _detailKey = "";
+      this.boardFilter = "all";
+      this.listStatus = "";
+      this.listAssignee = "";
+      this.search = "";
+      try {
+        persistBoardFilter("all");
+      } catch (_) {
+        /* */
+      }
       await this.loadBoards();
       await this.refreshBoard();
     },
@@ -732,6 +801,17 @@ export const useAppStore = defineStore("app", {
         if (t) return t;
       }
       return null;
+    },
+    /* M2-4 S7: 详情与看板变更同步 —— 任务在看板中且状态/优先级/指派/标题变化 → 重拉详情。
+       注意：archived 任务不在看板 payload 中（S4 懒加载），找不到时保持现状不关闭详情。 */
+    _syncDetailWithBoard() {
+      if (!this.detailId || !this.board) return;
+      const t = this.findTask(this.detailId);
+      if (!t) return;
+      const key = `${t.status}|${t.priority ?? ""}|${t.assignee ?? ""}|${t.title}`;
+      if (key === _detailKey) return;
+      _detailKey = key;
+      this.openDetail(this.detailId);
     },
 
     /* ---------- 分页任务列表（GET /api/tasks 信封） ---------- */
@@ -901,6 +981,8 @@ export const useAppStore = defineStore("app", {
           target.count = (target.count || 0) + 1;
           snap.targetInserted = true;
         }
+        /* t_bcf7c7bd: 乐观迁移后立即维持隐藏空列不变量（目标列有卡即展开、源列清空即折叠） */
+        if (this.hideEmpty) this._enforceHideEmpty(false);
         return snap;
       }
       return null;
@@ -1114,6 +1196,9 @@ export const useAppStore = defineStore("app", {
       this.detailOpts = opts;
       /* B1：同 id 重开也强制详情重拉（状态迁移后详情同步），TaskDetail watch 依赖此 nonce */
       this.detailNonce = (this.detailNonce || 0) + 1;
+      /* M2-4 S7: 记录当前看板指纹，避免下一个 refreshBoard 重复重拉 */
+      const t = this.findTask(id);
+      _detailKey = t ? `${t.status}|${t.priority ?? ""}|${t.assignee ?? ""}|${t.title}` : "";
     },
     closeDetail() {
       this.detailId = null;
@@ -1121,9 +1206,10 @@ export const useAppStore = defineStore("app", {
     },
 
     /* ---------- events ---------- */
+    /* M2-4 S6: 游标改事件 ID（created_at 同秒事件会丢/重；ID 单调精确续传） */
     async pollEvents() {
       try {
-        const list = await api(`/api/events?since=${this.eventSince}`);
+        const list = await api(`/api/events?after=${this.eventAfter}&limit=100`);
         if (!list || !list.length) return;
         const seen = new Set(this.events.map((e) => e.id));
         for (const ev of list) {
@@ -1133,7 +1219,7 @@ export const useAppStore = defineStore("app", {
           }
         }
         if (this.events.length > 100) this.events = this.events.slice(this.events.length - 100);
-        this.eventSince = list[list.length - 1].created_at;
+        this.eventAfter = list[list.length - 1].id;
       } catch (_) {
         /* best-effort */
       }
@@ -1220,7 +1306,7 @@ export const useAppStore = defineStore("app", {
     setView(v) {
       this.view = v;
       if (v === "stats") {
-        if (!this.events.length) this.eventSince = 0;
+        if (!this.events.length) this.eventAfter = 0;
         this.startEventPolling();
         this.pollEvents();
       } else {

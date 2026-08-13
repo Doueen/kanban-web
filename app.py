@@ -591,8 +591,11 @@ def api_diagnostics(severity: str = None, task: str = None):
 
 
 @app.get("/api/events", dependencies=[Depends(require_auth)])
-def api_events(since: int = None, kinds: str = None):
+def api_events(since: int = None, kinds: str = None, after: int = None):
     kind_list = [k.strip() for k in (kinds or "").split(",") if k.strip()] or None
+    # M2-4 S6: 事件游标改事件 ID（after 优先；since 保留兼容旧调用）
+    if after is not None:
+        return db.get_events_after(after_id=after, kinds=kind_list)
     return db.get_events(since=since, kinds=kind_list)
 
 
@@ -619,15 +622,21 @@ def api_events_stream(request: Request, limit: int = 0):
         lei = (request.headers.get("last-event-id") or "").strip()
         if lei.isdigit():
             last_id = int(lei)
+        else:
+            # M2-3 S3 fix: 无 Last-Event-ID（新页面/新客户端）→ 从当前尾部开始，
+            # 避免全量历史回放（数千 heartbeat 会让游标爬行数分钟，实时事件严重滞后）。
+            last_id = db.max_event_id()
         last_keepalive = _time.time()
         emitted = 0
         while True:
             try:
                 events = db.get_events_after(after_id=last_id, kinds=None, limit=50)
                 for ev in events:
+                    # M2-3 S3 fix: 游标必须跨过被过滤的事件（heartbeat 洪峰会让
+                    # LIMIT 50 永远返回同一批 heartbeat，流永久卡死）——先推进游标再过滤。
+                    last_id = ev["id"]
                     if ev.get("kind") in SSE_NOISE_KINDS:
                         continue
-                    last_id = ev["id"]
                     payload = json.dumps(
                         {
                             "id": ev["id"],

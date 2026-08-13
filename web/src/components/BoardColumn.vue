@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useAppStore, actionForTarget, STATUS } from "../store";
 import { persistBoardFilter, taskMatchesSearch } from "../utils";
+import { api } from "../api";
 import { stopDragGhost } from "../dragGhost";
 import { fail, COPY } from "../feedback";
 import TaskCard from "./TaskCard.vue";
@@ -14,6 +15,38 @@ const store = useAppStore();
 const dragOver = ref(false);
 const dragInvalid = ref(false);
 const showSheet = ref(false);
+
+/* M2-4 S4: archived 列懒加载（后端不下发任务；展开时经 /api/tasks 拉取，按需刷新） */
+const lazyTasks = ref(null); // null = 未加载
+let archLoaded = false;
+const isArchivedCol = computed(() => props.col.status === "archived");
+
+async function loadArchived() {
+  if (archLoaded || !isArchivedCol.value) return;
+  try {
+    const data = await api("/api/tasks?status=archived&archived=1&page_size=100");
+    lazyTasks.value = data.items || [];
+    archLoaded = true;
+  } catch (_) {
+    /* 失败保持 null，下次展开重试 */
+  }
+}
+/* 展开时加载；加载后 count 与列表条数不符（新归档/恢复）→ 重拉 */
+watch(
+  () => [props.col.status, store.isColFolded(props.col), props.col.count],
+  (vals) => {
+    if (vals[1]) return; // 折叠中不加载
+    if (lazyTasks.value !== null && vals[2] !== lazyTasks.value.length) {
+      archLoaded = false;
+      lazyTasks.value = null;
+    }
+    loadArchived();
+  },
+  { immediate: true }
+);
+const displayTasks = computed(() =>
+  isArchivedCol.value && lazyTasks.value !== null ? lazyTasks.value : props.col.tasks
+);
 
 /* 拖拽结束（drop/取消）统一复位列高亮，防 dragleave 漏触发导致高亮残留 */
 watch(
@@ -41,18 +74,20 @@ const emptyText = computed(() => EMPTY_TEXT[props.col.status] || "空");
 
 const folded = computed(() => store.isColFolded(props.col));
 
-/* M1-5 E8: 任意页搜索 → 本列卡片按标题/ID 实时过滤 */
+/* M1-5 E8: 任意页搜索 → 本列卡片按标题/ID 实时过滤（archived 懒加载列用 displayTasks） */
 const searchQuery = computed(() => (store.view === "board" ? store.search.trim() : ""));
 const filteredTasks = computed(() => {
   const q = searchQuery.value;
-  if (!q) return props.col.tasks;
-  return props.col.tasks.filter((t) => taskMatchesSearch(t, q));
+  if (!q) return displayTasks.value;
+  return displayTasks.value.filter((t) => taskMatchesSearch(t, q));
 });
 const showEmpty = computed(() =>
   searchQuery.value
-    ? !props.col.tasks.some((t) => taskMatchesSearch(t, searchQuery.value))
-    : !props.col.tasks.length
+    ? !displayTasks.value.some((t) => taskMatchesSearch(t, searchQuery.value))
+    : !displayTasks.value.length
 );
+/* M2-4 S4: archived 懒加载进行中（显示加载占位，避免「归档无记录」闪跳） */
+const archLoading = computed(() => isArchivedCol.value && lazyTasks.value === null);
 
 function toggleFold() {
   store.toggleCollapsed(props.col.status);
@@ -124,6 +159,10 @@ function onHeadClick(e) {
   if (e.target.closest(".col-fold")) return;
   showSheet.value = true;
 }
+/* M2-5 U5b: 菜单/空列 CTA 共用的「新建到此列」处理器 */
+function openCreateInCol() {
+  store.openCreate({ status: props.col.status });
+}
 function onColAction(item) {
   if (item.status) {
     store.boardFilter = item.status;
@@ -131,7 +170,7 @@ function onColAction(item) {
   } else if (item.fold) {
     toggleFold();
   } else if (item.create) {
-    store.openCreate({ status: props.col.status });
+    openCreateInCol();
   }
 }
 
@@ -225,11 +264,21 @@ function onCardBeforeLeave(el) {
       @before-leave="onCardBeforeLeave"
     >
       <div v-if="showEmpty" key="empty" class="empty" style="padding: 18px 4px; font-size: 12px">
-        <template v-if="searchQuery">
+        <template v-if="archLoading">加载中…</template>
+        <template v-else-if="searchQuery">
           {{ emptyText }} · 无匹配
           <button class="btn empty-cta" @click="store.setView('list')">去列表页查看</button>
         </template>
-        <template v-else>{{ emptyText }}</template>
+        <template v-else>
+          {{ emptyText }}
+          <button
+            v-if="!searchQuery && !isArchivedCol && props.col.count === 0"
+            class="btn empty-cta"
+            @click="openCreateInCol"
+          >
+            新建到此列
+          </button>
+        </template>
       </div>
       <template v-else>
         <div

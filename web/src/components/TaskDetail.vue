@@ -362,7 +362,9 @@ function onTouchEnd() {
     @click-overlay="store.closeDetail()"
     @closed="reset"
   >
-    <div v-if="loading" class="empty">加载中…</div>
+    <div v-if="loading" class="detail-skeleton">
+      <van-skeleton title :row="6" />
+    </div>
     <div v-else-if="error && !detail" class="empty">加载失败: {{ error }}</div>
 
     <div

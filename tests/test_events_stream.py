@@ -51,7 +51,9 @@ def test_stream_requires_auth(client):
 def test_stream_headers_and_frames(client):
     """SSE 帧解析：id 单调 + data JSON + 无 heartbeat。limit=5 自然结束流。"""
     text = ""
-    with client.stream("GET", "/api/events/stream?limit=5", auth=_auth()) as r:
+    with client.stream(
+        "GET", "/api/events/stream?limit=5", auth=_auth(), headers={"Last-Event-ID": "0"}
+    ) as r:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/event-stream")
         assert r.headers["cache-control"] == "no-cache"

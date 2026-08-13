@@ -3165,3 +3165,37 @@ select,
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ===== M2-5 U5c: 详情/统计加载骨架屏（追加覆盖块） ===== */
+.detail-skeleton,
+.stats-skeleton {
+  padding: 16px;
+}
+
+/* ===== t_bcf7c7bd: 一键隐藏空列 工具栏开关（追加覆盖块） ===== */
+.hide-empty-chip {
+  border-style: dashed;
+  color: var(--muted);
+}
+.hide-empty-chip:hover {
+  color: var(--text);
+}
+.hide-empty-chip.active {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.hide-empty-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---------- 创建 board 弹窗（t_a64d5aa5） ---------- */
+/* 字段样式复用 .settings-form；内容超高可滚动，避免小屏被截断 */
+.create-board-body {
+  padding: 8px 16px 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}

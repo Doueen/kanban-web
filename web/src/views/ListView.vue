@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 import { useAppStore, STATUS, STATUS_CSS } from "../store";
 import { api, jsonOpts } from "../api";
 import { ago, fmtTime } from "../utils";
-import { ok, fail, confirm, COPY } from "../feedback";
+import { ok, fail, confirm, loading, COPY } from "../feedback";
 import PagerBar from "../components/PagerBar.vue";
 
 const store = useAppStore();
@@ -24,33 +24,49 @@ function toggleSelect(id) {
   else s.add(id);
   selected.value = s;
 }
-async function batchAction(action, label) {
-  const ids = Array.from(selected.value);
+/* M2-5 U1: 批量并行 —— 每批 5 个并发 allSettled；idsOverride 为重试路径，跳过二次确认 */
+async function batchAction(action, label, idsOverride) {
+  const ids = idsOverride || Array.from(selected.value);
   if (!ids.length) {
-    fail(COPY.validate.batchEmpty);
+    if (!idsOverride) fail(COPY.validate.batchEmpty);
     return;
   }
-  const c = COPY.confirm.batch(label, ids.length);
-  const confirmed = await confirm({
-    title: c.title,
-    message: c.message,
-    confirmText: c.confirmText,
-    danger: true,
-  });
-  if (!confirmed) return;
-  let okCount = 0,
-    failCount = 0;
-  for (const id of ids) {
-    try {
-      await api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action }));
-      okCount++;
-    } catch (_) {
-      failCount++;
-    }
+  if (!idsOverride) {
+    const c = COPY.confirm.batch(label, ids.length);
+    const confirmed = await confirm({
+      title: c.title,
+      message: c.message,
+      confirmText: c.confirmText,
+      danger: true,
+    });
+    if (!confirmed) return;
   }
-  const msg = COPY.ok.batch(label, okCount, failCount);
-  if (failCount) fail(msg);
-  else ok(msg);
+  const total = ids.length;
+  let okCount = 0;
+  const failedIds = [];
+  loading(`已处理 0/${total}…`);
+  for (let i = 0; i < total; i += 5) {
+    const batch = ids.slice(i, i + 5);
+    const results = await Promise.allSettled(
+      batch.map((id) =>
+        api(`/api/tasks/${encodeURIComponent(id)}/action`, jsonOpts("POST", { action }))
+      )
+    );
+    results.forEach((r, idx) => {
+      if (r.status === "fulfilled") okCount++;
+      else failedIds.push(batch[idx]);
+    });
+    loading(`已处理 ${okCount}/${total}…`);
+  }
+  const failCount = failedIds.length;
+  if (failCount) {
+    fail(COPY.ok.batch(label, okCount, failCount), {
+      retry: () => batchAction(action, label, failedIds),
+      retryLabel: "重试失败项",
+    });
+  } else {
+    ok(COPY.ok.batch(label, okCount, failCount));
+  }
   batchMode.value = false;
   selected.value = new Set();
   await store.refreshBoard();
@@ -86,6 +102,19 @@ const tasksError = computed(() => store.tasksError);
 const isEmpty = computed(
   () => !store.tasksLoading && !store.tasksError && store.tasks.length === 0
 );
+
+/* M2-5 U5a: 任一筛选激活（状态/指派/搜索/含归档）→ 空态显示「清除筛选」一键复位 */
+const hasFilters = computed(
+  () =>
+    !!(store.listStatus || store.listAssignee || (store.search || "").trim() || store.listArchived)
+);
+function clearFilters() {
+  store.listStatus = "";
+  store.listAssignee = "";
+  store.search = "";
+  store.listArchived = false;
+  store.refreshTasks();
+}
 
 async function onRefresh() {
   await store.refreshBoard();
@@ -180,6 +209,13 @@ function openMenu(t, e) {
         </div>
 
         <van-empty v-else-if="isEmpty" description="没有匹配的任务" />
+        <button
+          v-if="isEmpty && hasFilters"
+          class="tb-chip list-clear-filters"
+          @click="clearFilters"
+        >
+          清除筛选
+        </button>
 
         <div
           v-for="t in tasks"

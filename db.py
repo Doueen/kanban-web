@@ -50,6 +50,9 @@ TASK_COLS = (
     "workflow_template_id, current_step_key"
 )
 
+# M2-4 S4: 看板 payload 精简字段集（~8 字段/任务；详情走 /api/tasks/{id}）
+BOARD_TASK_COLS = "id, title, assignee, status, priority, created_at"
+
 
 # --- board resolution -------------------------------------------------------
 
@@ -245,18 +248,50 @@ def board_fingerprint(db_path=None):
 
 
 def get_board(db_path=None):
-    """Group tasks by status for the kanban board."""
-    tasks = fetch_tasks(include_archived=True, db_path=db_path)
+    """Group tasks by status for the kanban board (M2-4 S4 精简 payload).
+
+    非归档列只下发 BOARD_TASK_COLS 精简字段；archived 列默认不下发任务
+    （前端展开时经 /api/tasks?status=archived 懒加载），count 为真实数量。
+    """
+    tasks = fetch_board_tasks(db_path=db_path)
     statuses = []
     for status, label in STATUS_LABELS.items():
         col_tasks = [t for t in tasks if t["status"] == status]
-        statuses.append({
-            "status": status,
-            "label": label,
-            "count": len(col_tasks),
-            "tasks": col_tasks,
-        })
+        if status == "archived":
+            # 懒加载列：只带 count，不带任务数组
+            statuses.append({
+                "status": status,
+                "label": label,
+                "count": archived_task_count(db_path=db_path),
+                "tasks": [],
+                "lazy": True,
+            })
+        else:
+            statuses.append({
+                "status": status,
+                "label": label,
+                "count": len(col_tasks),
+                "tasks": col_tasks,
+            })
     return statuses
+
+
+def fetch_board_tasks(db_path=None):
+    """看板任务（精简字段，非归档；与旧默认排序一致：优先级降序 + 创建时间降序）。"""
+    sql = (
+        "SELECT %s FROM tasks WHERE status != 'archived' "
+        "ORDER BY priority DESC, created_at DESC" % BOARD_TASK_COLS
+    )
+    with connect(db_path) as conn:
+        rows = conn.execute(sql).fetchall()
+    return [dict(r) for r in rows]
+
+
+def archived_task_count(db_path=None):
+    with connect(db_path) as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status = 'archived'"
+        ).fetchone()[0]
 
 
 def get_task(task_id, db_path=None):
@@ -341,6 +376,13 @@ def get_events(since=None, kinds=None, limit=100, db_path=None):
     for e in out:
         e["payload"] = _parse_payload(e.get("payload"))
     return out
+
+
+def max_event_id(db_path=None):
+    """Current max event id (SSE tail-start for clients without a cursor)."""
+    with connect(db_path) as conn:
+        row = conn.execute("SELECT MAX(id) FROM task_events").fetchone()
+    return int(row[0] or 0)
 
 
 def get_events_after(after_id=None, kinds=None, limit=100, db_path=None):
