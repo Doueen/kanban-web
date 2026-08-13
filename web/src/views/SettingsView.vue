@@ -23,8 +23,10 @@ async function boardOp(label, fn) {
     ok((res && res.message) || label + "成功");
     await store.loadBoards();
     await store.refreshBoard();
+    return true;
   } catch (err) {
     fail(COPY.fail(label, err.message));
+    return false;
   }
 }
 
@@ -33,17 +35,15 @@ async function doSwitch(slug) {
     api(`/api/boards/${encodeURIComponent(slug)}/switch`, jsonOpts("POST", {}))
   );
 }
+/* ---------- 创建 board（弹窗） ---------- */
+const createShow = ref(false);
+
 async function doCreate() {
-  const slug = newBoard.slug.trim();
-  if (!slug) {
-    fail(COPY.validate.slug);
-    return;
-  }
-  await boardOp("创建", () =>
+  const okFlag = await boardOp("创建", () =>
     api(
       "/api/boards",
       jsonOpts("POST", {
-        slug,
+        slug: newBoard.slug.trim(),
         name: newBoard.name.trim() || undefined,
         description: newBoard.description.trim() || undefined,
         icon: newBoard.icon.trim() || undefined,
@@ -51,10 +51,28 @@ async function doCreate() {
       })
     )
   );
-  newBoard.slug = "";
-  newBoard.name = "";
-  newBoard.description = "";
-  newBoard.icon = "";
+  if (okFlag) {
+    newBoard.slug = "";
+    newBoard.name = "";
+    newBoard.description = "";
+    newBoard.icon = "";
+  }
+  return okFlag;
+}
+
+/* 弹窗 before-close：confirm → 校验 slug + 创建（失败保持弹窗打开可重试）；
+   cancel / overlay（点遮罩）→ 直接关闭，不创建 */
+async function onCreateBeforeClose(action) {
+  if (action !== "confirm") return true;
+  const slug = newBoard.slug.trim();
+  if (!slug) {
+    fail(COPY.validate.slug);
+    return false;
+  }
+  const okFlag = await doCreate();
+  if (!okFlag) return false; // 创建失败：保留表单
+  createShow.value = false;
+  return true;
 }
 /* ---------- board 卡片行操作 ---------- */
 const boardMenuShow = ref(false);
@@ -389,20 +407,11 @@ function logout() {
 
       <div class="settings-block">
         <h4>创建 Board</h4>
-        <div class="settings-form">
-          <van-field
-            v-model="newBoard.slug"
-            label="Slug"
-            placeholder="my-project（kebab-case）*"
-            clearable
-          />
-          <van-field v-model="newBoard.name" label="名称" placeholder="可选" clearable />
-          <van-field v-model="newBoard.description" label="描述" placeholder="可选" clearable />
-          <van-field v-model="newBoard.icon" label="Icon" placeholder="可选，emoji" clearable />
-          <van-field v-model="newBoard.color" label="颜色" type="color" />
-        </div>
         <div class="settings-actions">
-          <van-button type="primary" @click="doCreate">创建</van-button>
+          <van-button class="create-board-btn" type="primary" @click="createShow = true"
+            >新建 Board</van-button
+          >
+          <span class="panel-note">Slug 必填，其余可选；创建后自动出现在看板列表</span>
         </div>
       </div>
     </div>
@@ -545,6 +554,28 @@ function logout() {
       close-on-click-action
       @select="onBoardMenuSelect"
     />
+
+    <!-- 创建 board 弹窗 -->
+    <van-dialog
+      v-model:show="createShow"
+      title="创建 Board"
+      show-cancel-button
+      close-on-click-overlay
+      :before-close="onCreateBeforeClose"
+    >
+      <div class="settings-form create-board-body">
+        <van-field
+          v-model="newBoard.slug"
+          label="Slug"
+          placeholder="my-project（kebab-case）*"
+          clearable
+        />
+        <van-field v-model="newBoard.name" label="名称" placeholder="可选" clearable />
+        <van-field v-model="newBoard.description" label="描述" placeholder="可选" clearable />
+        <van-field v-model="newBoard.icon" label="Icon" placeholder="可选，emoji" clearable />
+        <van-field v-model="newBoard.color" label="颜色" type="color" />
+      </div>
+    </van-dialog>
 
     <!-- 重命名 / 工作目录对话框 -->
     <van-dialog

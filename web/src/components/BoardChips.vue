@@ -45,5 +45,15 @@ function select(v) {
       <span class="chip-label">{{ c.label }}</span>
       <span v-if="c.count > 0" class="chip-count">{{ c.count > 99 ? "99+" : c.count }}</span>
     </button>
+    <!-- t_bcf7c7bd: 一键隐藏/恢复所有空列 -->
+    <button
+      class="chip hide-empty-chip"
+      :class="{ active: store.hideEmpty }"
+      :aria-pressed="store.hideEmpty"
+      :title="store.hideEmpty ? '恢复显示所有空列' : '折叠所有空列（0 张卡片）'"
+      @click="store.toggleHideEmpty()"
+    >
+      <span class="chip-label">{{ store.hideEmpty ? "显示空列" : "隐藏空列" }}</span>
+    </button>
   </div>
 </template>
