@@ -54,8 +54,8 @@ async function load() {
 }
 
 watch(
-  () => store.detailId,
-  (id) => {
+  () => [store.detailId, store.detailNonce],
+  ([id]) => {
     if (id) load();
   }
 );

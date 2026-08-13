@@ -115,10 +115,9 @@ function clearSnackTimer() {
 
 export function closeSnackbar() {
   clearSnackTimer();
-  if (snackEl) {
-    snackEl.remove();
-    snackEl = null;
-  }
+  /* 清理所有条：并发 fail/snackbar 调用可能叠加多个实例，单例引用会漏清旧条 */
+  document.querySelectorAll(".fb-snackbar").forEach((el) => el.remove());
+  snackEl = null;
 }
 
 /**
@@ -164,7 +163,7 @@ export function snackbar(msg, { actionText, onAction, duration = 5000, danger = 
 
 /* ---------- 自绘带重试按钮的失败提示（M2-1 乐观更新失败重试用；Vant Toast 无按钮） ---------- */
 function failWithRetry(msg, retry, retryLabel) {
-  closeSnackbar();
+  closeSnackbar(); // 先清理旧条：避免多条叠加 + 旧 timer 互踩（旧条永不消失）
   const el = document.createElement("div");
   el.className = "fb-snackbar fb-snackbar-fail";
   el.setAttribute("role", "alert");
@@ -199,9 +198,25 @@ function failWithRetry(msg, retry, retryLabel) {
 
 /* ---------- 四个统一入口（清单 §4.1） ---------- */
 
+/*
+ * Vant 4 Toast 无内建 aria-live/role（grep vant/es/toast 无任何 aria 属性，
+ * 且 Popup 会给 toast 渲染 role="dialog"，对轻提示语义错误）。
+ * 清单 §2.6：成功/加载 → role=status aria-live="polite"；失败 → role=alert aria-live="assertive"。
+ * 单例 toast 复用 → 渲染后打补丁到唯一的 .van-toast 元素即可（挂载后下一个宏任务）。
+ */
+function patchToastAria(role, live) {
+  setTimeout(() => {
+    const el = document.querySelector(".van-toast");
+    if (!el) return;
+    el.setAttribute("role", role);
+    el.setAttribute("aria-live", live);
+  }, 0);
+}
+
 /** 成功提示：绿，默认 1500ms；主题切换保持现网 1200ms（传 duration）。 */
 export function ok(msg, { duration = 1500, position, type = "success" } = {}) {
   showToast({ message: msg, type, duration, position });
+  patchToastAria("status", "polite");
 }
 
 /** 失败提示：红，默认 3000ms（保证错误信息可读完）；retry 时自绘重试按钮（3000ms）。 */
@@ -210,7 +225,8 @@ export function fail(msg, { duration = 3000, retry, retryLabel } = {}) {
     failWithRetry(msg, retry, retryLabel);
     return;
   }
-  showToast({ message: msg, type: "fail", duration, ariaLive: "assertive" });
+  showToast({ message: msg, type: "fail", duration });
+  patchToastAria("alert", "assertive");
 }
 
 /**
@@ -259,7 +275,9 @@ export function confirm({
 
 /** 确定性等待：loading 转圈，12s 上限；GC/DB 检查等手动关闭场景传 duration=0（返回 toast 实例可 close()）。 */
 export function loading(msg, { duration = 12000, forbidClick = false } = {}) {
-  return showToast({ message: msg, type: "loading", duration, forbidClick });
+  const t = showToast({ message: msg, type: "loading", duration, forbidClick });
+  patchToastAria("status", "polite");
+  return t;
 }
 
 /* 统一导出（兼容 import * as fb 与具名导入） */

@@ -868,7 +868,9 @@ export const useAppStore = defineStore("app", {
             onAction: () => this.runAction(id, undo, "undo via web"),
           });
         } else {
-          ok(res.message || label || "操作完成");
+          /* B1/B3：状态迁移成功用中文动作标签（清单 §2.4「已归档」「已完成」），
+             不透传 CLI 英文 res.message（如 "Archived t_xxx"） */
+          ok(`已${label}`);
         }
         await this.refreshBoard();
         if (this.detailId) await this.openDetail(this.detailId);
@@ -876,7 +878,10 @@ export const useAppStore = defineStore("app", {
         return res;
       } catch (err) {
         await this._reconcileTasks(removed); // 失败：重拉恢复真实状态
-        fail(COPY.fail("操作", err.message));
+        /* M2-1/B1：失败 toast（3000ms）内嵌「重试」按钮，重试原动作 */
+        fail(COPY.fail("操作", err.message), {
+          retry: () => this.runAction(id, action, note),
+        });
         throw err;
       }
     },
@@ -951,6 +956,8 @@ export const useAppStore = defineStore("app", {
     openDetail(id, opts = {}) {
       this.detailId = id;
       this.detailOpts = opts;
+      /* B1：同 id 重开也强制详情重拉（状态迁移后详情同步），TaskDetail watch 依赖此 nonce */
+      this.detailNonce = (this.detailNonce || 0) + 1;
     },
     closeDetail() {
       this.detailId = null;
