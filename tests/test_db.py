@@ -167,6 +167,30 @@ def test_board_fingerprint_changes_and_ignores_heartbeat(tmp_db):
     assert fp3 != fp2, "新评论必须改变变更指纹"
 
 
+def test_board_fingerprint_changes_on_same_second_events(tmp_db):
+    """t_3ad4fe46 回归：同秒内的非 heartbeat 事件必须改变指纹。
+
+    根因是 created_at 秒级精度 —— 同一秒内完成两个任务，MAX(created_at)
+    不变 → ETag 不变 → /api/board 304 → 前端漏显且粘滞。
+    修复：指纹追加非 heartbeat 事件的 MAX(task_events.id) 单调分量。"""
+    conn = sqlite3.connect(tmp_db)
+    conn.execute(
+        "INSERT INTO task_events (task_id, kind, payload, created_at) VALUES ('t_1','completed',NULL,?)",
+        (9_999_999_999,),
+    )
+    conn.commit()
+    fp_a = db.board_fingerprint(db_path=tmp_db)
+    # 同一秒（同 created_at）再完成第二个任务 —— 只靠 id 递增区分
+    conn.execute(
+        "INSERT INTO task_events (task_id, kind, payload, created_at) VALUES ('t_2','completed',NULL,?)",
+        (9_999_999_999,),
+    )
+    conn.commit()
+    conn.close()
+    fp_b = db.board_fingerprint(db_path=tmp_db)
+    assert fp_b != fp_a, "同秒第二条 completed 事件必须改变变更指纹（id 单调分量）"
+
+
 def test_get_task_missing_returns_none(tmp_db):
     assert db.get_task("t_nope", db_path=tmp_db) is None
 

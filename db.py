@@ -236,13 +236,20 @@ def get_assignees(db_path=None):
 
 def board_fingerprint(db_path=None):
     """轻量变更指纹（M1-3 E6）：tasks/comments/events/attachments 的
-    MAX(created_at) UNION，排除 heartbeat 事件。用于 /api/board 的 ETag。"""
+    MAX(created_at) UNION + 非 heartbeat 事件的 MAX(id) 单调分量，
+    排除 heartbeat 事件。用于 /api/board 的 ETag。
+
+    t_3ad4fe46: created_at 是秒级精度，同一秒内的完成/迁移事件不改变
+    MAX(created_at) → ETag 不变 → 304 短路 → 前端漏显且粘滞；
+    事件表 id 自增单调，任何非 heartbeat 事件（含同秒）都推进 MAX(id)
+    → 指纹必变 → 不再 304 漏显。"""
     with connect(db_path) as conn:
         rows = conn.execute(
             "SELECT MAX(created_at) FROM tasks "
             "UNION SELECT MAX(created_at) FROM task_comments "
             "UNION SELECT MAX(created_at) FROM task_events WHERE kind != 'heartbeat' "
-            "UNION SELECT MAX(created_at) FROM task_attachments"
+            "UNION SELECT MAX(created_at) FROM task_attachments "
+            "UNION SELECT MAX(id) FROM task_events WHERE kind != 'heartbeat'"
         ).fetchall()
     return "|".join(str(r[0] or 0) for r in rows)
 

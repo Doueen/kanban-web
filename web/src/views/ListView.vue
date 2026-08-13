@@ -117,7 +117,8 @@ function clearFilters() {
 }
 
 async function onRefresh() {
-  await store.refreshBoard();
+  /* t_3ad4fe46: 手动刷新绕过 ETag（同秒 304 粘滞防线） */
+  await store.refreshBoard(true);
   await store.refreshTasks();
   refreshing.value = false;
 }

@@ -71,7 +71,8 @@ function onBoardScroll() {
 }
 
 async function onRefresh() {
-  await store.refreshBoard();
+  /* t_3ad4fe46: 手动下拉/⟳ 刷新必须绕过 ETag，否则同秒变更被 304 短路 */
+  await store.refreshBoard(true);
   refreshing.value = false;
   try {
     navigator.vibrate?.(10);

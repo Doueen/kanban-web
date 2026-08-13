@@ -728,7 +728,9 @@ export const useAppStore = defineStore("app", {
       const seq = ++_boardSeq;
       try {
         const [data, cur] = await Promise.all([
-          api("/api/board", { etag: true }),
+          /* t_3ad4fe46: force（手动刷新/切换看板）绕过 ETag 条件请求，
+             保证用户主动刷新必拿最新数据（同秒 304 粘滞的兜底防线） */
+          api("/api/board", { etag: !force }),
           api("/api/boards/current" + (force ? "?force=1" : "")),
         ]);
         if (seq !== _boardSeq) return; // 竞态守卫：已有更新的请求，过期响应丢弃
@@ -792,7 +794,9 @@ export const useAppStore = defineStore("app", {
         /* */
       }
       await this.loadBoards();
-      await this.refreshBoard();
+      /* t_3ad4fe46: 切换看板强制拉新（旧 board 的 ETag 与新 board 指纹
+         理论上可能雷同 → 304 → 串板显示旧数据），不依赖指纹差异 */
+      await this.refreshBoard(true);
     },
     findTask(id) {
       if (!this.board) return null;

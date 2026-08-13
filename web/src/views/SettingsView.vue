@@ -22,7 +22,8 @@ async function boardOp(label, fn) {
     const res = await fn();
     ok((res && res.message) || label + "成功");
     await store.loadBoards();
-    await store.refreshBoard();
+    /* t_3ad4fe46: 切换/新建 board 后强制拉新，绕过 ETag 防串板 */
+    await store.refreshBoard(true);
     return true;
   } catch (err) {
     fail(COPY.fail(label, err.message));
