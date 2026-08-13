@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useAppStore, actionForTarget, STATUS } from "../store";
 import { persistBoardFilter, taskMatchesSearch } from "../utils";
 import { api } from "../api";
@@ -174,44 +174,6 @@ function onColAction(item) {
   }
 }
 
-/* ---------- 虚拟滚动（P2#15：单列模式且任务 >50 条，窗口化） ---------- */
-const scrollEl = ref(null);
-const ITEM_H = 96;
-const virt = reactive({ start: 0, end: 0 });
-const isSingle = computed(() => store.boardFilter !== "all");
-/* M1-5 E8: 搜索时窗口化/计数都基于过滤后的任务列表 */
-const useVirt = computed(() => isSingle.value && filteredTasks.value.length > 50);
-/* 虚拟滚动窗口化时关闭卡片进出过渡（否则滚动过程中每个新挂载卡片都播动画，造成卡顿） */
-const transName = computed(() => (useVirt.value ? "card-virt" : "card"));
-const shownTasks = computed(() => {
-  if (!useVirt.value) return filteredTasks.value;
-  return filteredTasks.value.slice(virt.start, virt.end);
-});
-function scrollElDom() {
-  /* TransitionGroup 上挂 ref 拿到的是组件实例，取 $el 才是滚动容器 */
-  const v = scrollEl.value;
-  return v && (v.$el || v);
-}
-function calcWindow() {
-  const el = scrollElDom();
-  if (!el) return;
-  const total = filteredTasks.value.length;
-  const s = Math.max(0, Math.floor(el.scrollTop / ITEM_H));
-  const vis = Math.ceil(el.clientHeight / ITEM_H) + 6;
-  virt.start = Math.max(0, s - 4);
-  virt.end = Math.min(total, s + vis);
-}
-function onVirtScroll() {
-  if (useVirt.value) calcWindow();
-}
-watch(
-  () => [filteredTasks.value.length, useVirt.value],
-  () => nextTick(calcWindow)
-);
-onMounted(() => {
-  if (useVirt.value) nextTick(calcWindow);
-});
-
 /* 离开动画：把即将移除的卡片钉在原位（列内是 flex 纵向布局，absolute 元素会跑到列首，
    必须显式记下 rect 再 absolute，兄弟卡片 FLIP 上移时它原地淡出，无跳动） */
 function onCardBeforeLeave(el) {
@@ -255,14 +217,7 @@ function onCardBeforeLeave(el) {
       </button>
     </div>
 
-    <TransitionGroup
-      ref="scrollEl"
-      tag="div"
-      class="column-body"
-      :name="transName"
-      @scroll="onVirtScroll"
-      @before-leave="onCardBeforeLeave"
-    >
+    <TransitionGroup tag="div" class="column-body" name="card" @before-leave="onCardBeforeLeave">
       <div v-if="showEmpty" key="empty" class="empty" style="padding: 18px 4px; font-size: 12px">
         <template v-if="archLoading">加载中…</template>
         <template v-else-if="searchQuery">
@@ -281,24 +236,13 @@ function onCardBeforeLeave(el) {
         </template>
       </div>
       <template v-else>
-        <div
-          v-if="useVirt"
-          key="sp-top"
-          :style="{ height: virt.start * ITEM_H + 'px', flex: '0 0 auto' }"
-        ></div>
         <TaskCard
-          v-for="(t, i) in shownTasks"
+          v-for="(t, i) in filteredTasks"
           :key="t.id"
           :task="t"
-          :index="virt.start + i"
-          :no-anim="useVirt"
+          :index="i"
           :highlight="searchQuery"
         />
-        <div
-          v-if="useVirt"
-          key="sp-bot"
-          :style="{ height: (filteredTasks.length - virt.end) * ITEM_H + 'px', flex: '0 0 auto' }"
-        ></div>
       </template>
     </TransitionGroup>
 

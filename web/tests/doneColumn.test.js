@@ -137,6 +137,33 @@ describe("组件层：BoardColumn 渲染完成列卡片", () => {
     expect(text).toContain("已完成任务乙");
   });
 
+  it("单列模式下超过 50 条仍完整渲染，包含最后一条长标题任务", async () => {
+    const { mount } = await import("@vue/test-utils");
+    const { default: BoardColumn } = await import("../src/components/BoardColumn.vue");
+    store.boardFilter = "done";
+    const tasks = Array.from({ length: 61 }, (_, i) => ({
+      id: `t_done_${i}`,
+      title:
+        i === 60
+          ? "最后一条已完成任务——这是会换行的长标题，用于验证大量任务时不会因固定行高窗口计算而丢失"
+          : `已完成任务${i}`,
+      status: "done",
+      priority: i % 4,
+      assignee: i % 2 ? "developer-with-a-long-name" : null,
+    }));
+    const wrapper = mount(BoardColumn, {
+      props: {
+        col: { status: "done", label: "完成", count: tasks.length, tasks },
+      },
+      global: { plugins: [pinia] },
+    });
+
+    const cards = wrapper.findAll(".card");
+    expect(cards).toHaveLength(61);
+    expect(cards.at(60).text()).toContain("最后一条已完成任务");
+    expect(wrapper.find('[aria-label^="打开任务：最后一条已完成任务"]').exists()).toBe(true);
+  });
+
   it("done 列无任务 → 渲染空态文案，不渲染卡片", async () => {
     const { mount } = await import("@vue/test-utils");
     const { default: BoardColumn } = await import("../src/components/BoardColumn.vue");

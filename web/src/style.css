@@ -2703,7 +2703,6 @@ select,
   opacity: 0;
   transform: scale(0.97);
 }
-/* 虚拟滚动窗口化时使用 card-virt 名字——该组类名下无任何规则 = 过渡关闭 */
 .no-anim {
   animation: none !important;
 }
