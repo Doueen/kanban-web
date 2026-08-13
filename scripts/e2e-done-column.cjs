@@ -101,8 +101,17 @@ function check(name, ok, extra) {
     });
 
   // 0) 基线：done 列 store==DOM==DB，无 vue 错误
-  let s = await snap();
-  check("基线 done列 store.count==tasks==DOM==DB", s.done && s.done.count === s.done.tasks && s.done.count === s.domCount && s.domCards === s.done.count && s.done.count === baseDone, JSON.stringify({ store: s.done && s.done.count, dom: s.domCount, db: baseDone }));
+  //    真实板上并发完成可能落在「页面拉取」与「本脚本读 DB」之间造成读数竞态
+  //    （store/DOM 已含新任务、DB 读数慢半拍）—— 重试至安静瞬间（≤5s）。
+  let s = null;
+  let baselineOk = false;
+  for (let i = 0; i < 5 && !baselineOk; i++) {
+    s = await snap();
+    baselineOk =
+      s.done && s.done.count === s.done.tasks && s.done.count === s.domCount && s.domCards === s.done.count && s.done.count === dbDone(DB);
+    if (!baselineOk) await page.waitForTimeout(1000);
+  }
+  check("基线 done列 store.count==tasks==DOM==DB", baselineOk, JSON.stringify({ store: s.done && s.done.count, dom: s.domCount, db: dbDone(DB) }));
   check("基线 无vue错误", s.vueErr.length === 0, JSON.stringify(s.vueErr));
 
   // 1) 创建任务（CLI，模拟 worker 落库；默认初始状态 ready）→ SSE 实时上板
