@@ -13,6 +13,7 @@ const CHROME =
   "/root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell";
 const DB = "/root/.hermes/kanban.db";
 const M1_DB = "/root/.hermes/kanban/boards/m1probe/kanban.db";
+const created = []; // 待清理任务（模块级：崩溃 catch 也可见）
 
 // 认证从服务 .env 读取（脚本不得硬编码口令）
 const envText = fs.readFileSync("/opt/hermes/kanban-web/.env", "utf8");
@@ -72,7 +73,6 @@ function check(name, ok, extra) {
     }
   });
 
-  const created = []; // 待清理任务
   const baseDone = dbDone(DB);
   console.log(`baseline done=${baseDone}`);
 
@@ -116,14 +116,16 @@ function check(name, ok, extra) {
   s = await snap();
   const inBoard = await page.evaluate((tid) => !!window.__store().findTask(tid), tidA);
   check("创建任务后新任务上板(SSE实时)", inBoard, `tid=${tidA}`);
-  check("创建任务不污染done列", s.done.count === baseDone, `done=${s.done.count}`);
+  check("创建任务不污染done列", s.done.count === dbDone(DB), `done=${s.done.count} db=${dbDone(DB)}`);
 
   // 2) 完成任务 → done 列实时 +1 且含该任务
+  //    注意：真实板上 dispatcher/其他 worker 可能并发写库（CLI 偶发等锁数秒），
+  //    等待窗口放宽到 20s，断言全部用实时 DB 读数而非启动时基线。
   cli(`complete ${tidA}`);
   await page.waitForFunction(
     (tid) => window.__store().board.statuses.find((c) => c.status === "done").tasks.some((t) => t.id === tid),
     tidA,
-    { timeout: 8000 }
+    { timeout: 20000 }
   );
   s = await snap();
   check("完成后 done列含任务(SSE实时上屏)", s.done.ids.includes(tidA), `done=${s.done.count}`);
@@ -140,7 +142,7 @@ function check(name, ok, extra) {
   await page.waitForFunction(
     (tid) => window.__store().board.statuses.find((c) => c.status === "done").tasks.some((t) => t.id === tid),
     tidB,
-    { timeout: 8000 }
+    { timeout: 20000 }
   );
   // 核心断言：完成之后页面发起的 /api/board 条件请求（带旧 If-None-Match）必须 200
   await page.waitForTimeout(1200); // 等 SSE 引发的条件请求落盘
@@ -205,14 +207,21 @@ function check(name, ok, extra) {
 
   await browser.close();
 
-  // 7) 清理：删除测试任务，恢复基线
+  // 7) 清理：删除测试任务；断言「E2E 标题任务零残留」（并发活动下不用 done 计数作基线）
   dbCleanup(created);
-  const after = dbDone(DB);
-  check("清理后 done 列恢复基线", after === baseDone, `after=${after} base=${baseDone}`);
+  const residue = parseInt(
+    execSync(`python3 -c "import sqlite3;print(sqlite3.connect('${DB}').execute(\\"SELECT COUNT(*) FROM tasks WHERE title LIKE 'E2E回归%'\\").fetchone()[0])"`, { encoding: "utf8" }).trim(),
+    10
+  );
+  check("清理后 E2E 测试任务零残留", residue === 0, `residue=${residue}`);
 
   console.log(failures.length ? `\nRESULT: ${failures.length} FAILED — ${failures.join(", ")}` : "\nRESULT: ALL PASS");
   process.exit(failures.length ? 1 : 0);
 })().catch((e) => {
   console.error("FAIL:", e.message);
+  try {
+    if (created.length) dbCleanup(created);
+    console.log("crash-cleanup done for:", created.join(", "));
+  } catch (_) {}
   process.exit(1);
 });
