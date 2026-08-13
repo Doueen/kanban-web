@@ -160,6 +160,9 @@ describe("组件层：BoardColumn 渲染完成列卡片", () => {
 
     const cards = wrapper.findAll(".card");
     expect(cards).toHaveLength(61);
+    const swipeCells = wrapper.findAll(".column-body > .board-task-card");
+    expect(swipeCells).toHaveLength(61);
+    expect(swipeCells[0].attributes("style")).toContain("flex-shrink: 0");
     expect(cards.at(60).text()).toContain("最后一条已完成任务");
     expect(wrapper.find('[aria-label^="打开任务：最后一条已完成任务"]').exists()).toBe(true);
   });

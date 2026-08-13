@@ -141,7 +141,12 @@ function onDragEnd() {
 </script>
 
 <template>
-  <van-swipe-cell ref="swipeCell" :disabled="!showSwipe">
+  <van-swipe-cell
+    ref="swipeCell"
+    class="board-task-card"
+    style="flex: 0 0 auto"
+    :disabled="!showSwipe"
+  >
     <div
       class="card"
       :class="[
