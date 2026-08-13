@@ -115,6 +115,36 @@ def test_get_board_status_order_follows_STATUS_LABELS(tmp_db):
     assert by_status["archived"] == 1
 
 
+def test_get_board_done_column_includes_completed_tasks(tmp_db):
+    """回归（t_03792579 用户可见现象）：/api/board 的 done 列必须把已完成任务
+    连同任务数据一起下发——前端渲染只看列里的 tasks 数组，只有 count 不够。
+
+    修复前：任务确实进入了 done（CLI/DB 侧正常），但 SSE 推送链缺陷让前端
+    拿不到新数据、看板冻结 → 完成列"没有任务"。此测试钉住数据契约：
+    done 列 tasks 数组必须包含已完成任务（含 id/title/status 渲染三要素）。
+    """
+    board = db.get_board(db_path=tmp_db)
+    done_col = next(c for c in board if c["status"] == "done")
+    assert done_col["count"] == 1
+    assert len(done_col["tasks"]) == 1
+    t = done_col["tasks"][0]
+    assert t["id"] == "t_2"
+    assert t["title"] == "任务乙"
+    assert t["status"] == "done"
+    # 其他列不受影响：todo 任务只出现在 todo 列
+    todo_col = next(c for c in board if c["status"] == "todo")
+    assert [x["id"] for x in todo_col["tasks"]] == ["t_1"]
+
+
+def test_get_board_archived_lazy_loads_tasks(tmp_db):
+    """M2-4 S4：archived 列只下发 count（tasks=[]），展开时前端再懒加载。"""
+    board = db.get_board(db_path=tmp_db)
+    arch_col = next(c for c in board if c["status"] == "archived")
+    assert arch_col["count"] == 1
+    assert arch_col["tasks"] == []
+    assert arch_col.get("lazy") is True
+
+
 def test_board_fingerprint_changes_and_ignores_heartbeat(tmp_db):
     fp1 = db.board_fingerprint(db_path=tmp_db)
     conn = sqlite3.connect(tmp_db)
