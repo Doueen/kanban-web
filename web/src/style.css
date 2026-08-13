@@ -3146,3 +3146,22 @@ select,
   cursor: not-allowed;
   pointer-events: auto;
 }
+
+/* ===== M2-2 S2: 列表归档视图「恢复」按钮（追加覆盖块） ===== */
+.row-restore {
+  flex: 0 0 auto;
+  margin: 0 6px 0 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--accent, #45e0cd);
+  background: color-mix(in srgb, var(--accent, #45e0cd) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #45e0cd) 35%, transparent);
+}
+.row-restore:hover {
+  background: color-mix(in srgb, var(--accent, #45e0cd) 18%, transparent);
+}
+.row-restore:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

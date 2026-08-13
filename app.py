@@ -325,6 +325,8 @@ async def api_task_action(task_id: str, request: Request):
         "reopen-review": lambda: kanban_cli.reopen_review(task_id, note),
         "request-changes": lambda: kanban_cli.request_changes(task_id, _reason_payload({"note": note}, "changes requested")),
         "archive": lambda: kanban_cli.archive(task_id),
+        "uncomplete": lambda: kanban_cli.uncomplete(task_id),
+        "unarchive": lambda: kanban_cli.unarchive(task_id),
         "reclaim": lambda: kanban_cli.reclaim(task_id, note),
     }
     fn = handlers.get(action)

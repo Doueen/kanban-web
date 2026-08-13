@@ -132,6 +132,8 @@ export const ACTION_LABEL = {
   "request-changes": "退回修改",
   "reopen-review": "重新评审",
   archive: "归档",
+  uncomplete: "取消完成",
+  unarchive: "恢复",
   reclaim: "回收运行",
   specify: "AI 细化",
   decompose: "AI 分解",
@@ -143,11 +145,14 @@ export function actionLabel(a) {
   return ACTION_LABEL[a] || a;
 }
 
-/* B1 可逆动作 → 5s 撤销条（操作提示清单 §3 B1：block→unblock、schedule→unblock、request-review→reopen-review） */
+/* B1 可逆动作 → 5s 撤销条（操作提示清单 §3 B1：block→unblock、schedule→unblock、
+   request-review→reopen-review；M2-2 S2：complete→uncomplete、archive→unarchive） */
 const UNDO_ACTIONS = {
   block: "unblock",
   schedule: "unblock",
   "request-review": "reopen-review",
+  complete: "uncomplete",
+  archive: "unarchive",
 };
 
 /* M2-1 S1 乐观更新：动作 → 目标状态推导（菜单/快捷按钮等无显式目标时用；
@@ -162,6 +167,8 @@ const ACTION_TARGET = {
   "request-changes": "ready",
   "reopen-review": "ready",
   archive: "archived",
+  uncomplete: "todo",
+  unarchive: "todo",
   reclaim: null,
   heartbeat: null,
 };
@@ -212,6 +219,8 @@ export function menuItems(task) {
   const items = [];
   items.push({ label: "查看详情", action: "view" });
   items.push({ label: "移动到", action: "move" });
+  /* M2-2 S2: 归档任务可一键恢复（unarchive verb） */
+  if (task.status === "archived") items.push({ label: "恢复", action: "unarchive" });
   if (task.status === "running") {
     items.push({ label: "回收运行", action: "reclaim" });
     items.push({ label: "心跳", action: "heartbeat" });

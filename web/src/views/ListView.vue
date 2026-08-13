@@ -211,6 +211,15 @@ function openMenu(t, e) {
               >
             </div>
           </div>
+          <!-- M2-2 S2: 归档视图「恢复」按钮（unarchive verb，可直接在列表恢复） -->
+          <button
+            v-if="t.status === 'archived' && !batchMode"
+            class="tb-chip row-restore"
+            :disabled="!!store.pendingOps[t.id]"
+            @click.stop="store.runAction(t.id, 'unarchive')"
+          >
+            恢复
+          </button>
           <button
             v-if="!batchMode"
             class="menu-btn list-menu-btn"

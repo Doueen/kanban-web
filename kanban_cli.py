@@ -161,6 +161,14 @@ def archive(task_id):
     return run_checked(["archive", task_id])
 
 
+def uncomplete(task_id):
+    return run_checked(["uncomplete", task_id])
+
+
+def unarchive(task_id):
+    return run_checked(["unarchive", task_id])
+
+
 def reclaim(task_id, reason=None):
     args = ["reclaim", task_id]
     if reason:
