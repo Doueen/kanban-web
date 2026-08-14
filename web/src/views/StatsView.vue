@@ -55,7 +55,12 @@ const trend = computed(() => {
     });
   }
   for (const e of trendEvents.value) {
-    if (e.kind === "status" && e.payload && e.payload.status === "done") {
+    // 完成事件：Hermes 发射的是 kind='completed'（payload 无 status 字段）；
+    // 兼容旧格式 status+done
+    if (
+      e.kind === "completed" ||
+      (e.kind === "status" && e.payload && e.payload.status === "done")
+    ) {
       const d = new Date((e.created_at || 0) * 1000);
       const key = d.toISOString().slice(0, 10);
       const hit = days.find((x) => x.key === key);
